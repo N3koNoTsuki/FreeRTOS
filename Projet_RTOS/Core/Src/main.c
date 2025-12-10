@@ -25,6 +25,7 @@
 #include "NekoNoLib.h"
 #include "lcd_st7032i.h"
 #include "stdio.h"
+#include "string.h"
 /* USER CODE END Includes */
 
 /* Private typedef -----------------------------------------------------------*/
@@ -38,10 +39,7 @@
 #define buffer_size (I2S_HALF_BUFFER_SIZE*2)
 #define I2S_FLAG_HALF 0x00000001U
 #define I2S_FLAG_FULL 0x00000002U
-//#define Debug
-//#define DebugIT
-//#define DebugHard
-#define FixAudioI2S
+
 /* USER CODE END PD */
 
 /* Private macro -------------------------------------------------------------*/
@@ -68,10 +66,10 @@ const osThreadAttr_t defaultTask_attributes = {
   .stack_size = 128 * 4,
   .priority = (osPriority_t) osPriorityNormal,
 };
-/* Definitions for ReadEnc1 */
-osThreadId_t ReadEnc1Handle;
-const osThreadAttr_t ReadEnc1_attributes = {
-  .name = "ReadEnc1",
+/* Definitions for ReadEncTask */
+osThreadId_t ReadEncTaskHandle;
+const osThreadAttr_t ReadEncTask_attributes = {
+  .name = "ReadEncTask",
   .stack_size = 128 * 4,
   .priority = (osPriority_t) osPriorityNormal1,
 };
@@ -79,8 +77,15 @@ const osThreadAttr_t ReadEnc1_attributes = {
 osThreadId_t AudioTaskHandle;
 const osThreadAttr_t AudioTask_attributes = {
   .name = "AudioTask",
-  .stack_size = 1024 * 4,
+  .stack_size = 128 * 4,
   .priority = (osPriority_t) osPriorityAboveNormal,
+};
+/* Definitions for DisplayTask */
+osThreadId_t DisplayTaskHandle;
+const osThreadAttr_t DisplayTask_attributes = {
+  .name = "DisplayTask",
+  .stack_size = 128 * 4,
+  .priority = (osPriority_t) osPriorityNormal1,
 };
 /* Definitions for AudioSem */
 osSemaphoreId_t AudioSemHandle;
@@ -92,21 +97,21 @@ osEventFlagsId_t WaitNewValHandle;
 const osEventFlagsAttr_t WaitNewVal_attributes = {
   .name = "WaitNewVal"
 };
-/* Definitions for BufferI2S */
-osEventFlagsId_t BufferI2SHandle;
-const osEventFlagsAttr_t BufferI2S_attributes = {
-  .name = "BufferI2S"
-};
 /* USER CODE BEGIN PV */
 int16_t i2s3_buffer[buffer_size];
 int16_t i2s2_buffer[buffer_size];
-#ifdef FixAudioI2S
+
 /* Flags posés par les callbacks DMA */
 volatile uint32_t i2s_dma_flags = 0;
+volatile uint32_t i2s_enco_bp_flags = 0;
+
+static const char blank_line[] = "                ";
 
 #define I2S_DMA_FLAG_HALF  (1U << 0)
 #define I2S_DMA_FLAG_FULL  (1U << 1)
-#endif
+#define I2S_ENCO_SUB_MENU_FLAG   (1U << 0)
+#define I2S_ENCO_MENU_FLAG 		 (1U << 1)
+
 /* USER CODE END PV */
 
 /* Private function prototypes -----------------------------------------------*/
@@ -120,8 +125,9 @@ static void MX_TIM1_Init(void);
 static void MX_I2S2_Init(void);
 static void MX_I2S3_Init(void);
 void StartDefaultTask(void *argument);
-void StartReadEnc1(void *argument);
-void AudioTaskIN(void *argument);
+void StartReadEncTask(void *argument);
+void StartAudioTask(void *argument);
+void StartDisplayTask(void *argument);
 
 /* USER CODE BEGIN PFP */
 
@@ -129,6 +135,10 @@ void AudioTaskIN(void *argument);
 
 /* Private user code ---------------------------------------------------------*/
 /* USER CODE BEGIN 0 */
+static inline uint32_t EncoderSteps(void)
+{
+    return __HAL_TIM_GET_COUNTER(&htim1) >> 1;
+}
 
 /* USER CODE END 0 */
 
@@ -175,6 +185,8 @@ int main(void)
   HAL_TIM_Encoder_Start(&htim1, TIM_CHANNEL_ALL);
   lcd_init(hi2c1);
   lcd_write("HELLO");
+  lcd_write("Neko no Lib");
+  while(1==1);
   printf("TEST\r\n");
   /* USER CODE END 2 */
 
@@ -205,11 +217,14 @@ int main(void)
   /* creation of defaultTask */
   defaultTaskHandle = osThreadNew(StartDefaultTask, NULL, &defaultTask_attributes);
 
-  /* creation of ReadEnc1 */
-  ReadEnc1Handle = osThreadNew(StartReadEnc1, NULL, &ReadEnc1_attributes);
+  /* creation of ReadEncTask */
+  ReadEncTaskHandle = osThreadNew(StartReadEncTask, NULL, &ReadEncTask_attributes);
 
   /* creation of AudioTask */
-  AudioTaskHandle = osThreadNew(AudioTaskIN, NULL, &AudioTask_attributes);
+  AudioTaskHandle = osThreadNew(StartAudioTask, NULL, &AudioTask_attributes);
+
+  /* creation of DisplayTask */
+  DisplayTaskHandle = osThreadNew(StartDisplayTask, NULL, &DisplayTask_attributes);
 
   /* USER CODE BEGIN RTOS_THREADS */
   /* add threads, ... */
@@ -219,11 +234,8 @@ int main(void)
   /* creation of WaitNewVal */
   WaitNewValHandle = osEventFlagsNew(&WaitNewVal_attributes);
 
-  /* creation of BufferI2S */
-  BufferI2SHandle = osEventFlagsNew(&BufferI2S_attributes);
-
   /* USER CODE BEGIN RTOS_EVENTS */
-  if ((WaitNewValHandle == NULL) || (BufferI2SHandle == NULL))
+  if (WaitNewValHandle == NULL)
   {
       printf("ERR: EventFlags create failed\r\n");
       Error_Handler();
@@ -557,7 +569,16 @@ static void MX_GPIO_Init(void)
   GPIO_InitStruct.Speed = GPIO_SPEED_FREQ_LOW;
   HAL_GPIO_Init(LD2_GPIO_Port, &GPIO_InitStruct);
 
+  /*Configure GPIO pin : enco_Bp_Pin */
+  GPIO_InitStruct.Pin = enco_Bp_Pin;
+  GPIO_InitStruct.Mode = GPIO_MODE_IT_RISING;
+  GPIO_InitStruct.Pull = GPIO_PULLUP;
+  HAL_GPIO_Init(enco_Bp_GPIO_Port, &GPIO_InitStruct);
+
   /* EXTI interrupt init*/
+  HAL_NVIC_SetPriority(EXTI9_5_IRQn, 5, 0);
+  HAL_NVIC_EnableIRQ(EXTI9_5_IRQn);
+
   HAL_NVIC_SetPriority(EXTI15_10_IRQn, 5, 0);
   HAL_NVIC_EnableIRQ(EXTI15_10_IRQn);
 
@@ -573,6 +594,12 @@ void HAL_GPIO_EXTI_Callback(uint16_t GPIO_Pin)
 		case Bp_Blue_Pin:
 			HAL_GPIO_TogglePin(LD2_GPIO_Port, LD2_Pin);
 			__HAL_TIM_SET_COUNTER(&htim1,0);//On reset le compteur lors de l'appuie sur Bp
+			break;
+		case enco_Bp_Pin:
+			//Ajouter action pour le bouton de l'encodeur
+			HAL_GPIO_TogglePin(LD2_GPIO_Port, LD2_Pin);
+			__HAL_TIM_SET_COUNTER(&htim1,0);//On reset le compteur lors de l'appuie sur Bp
+			i2s_enco_bp_flags ^= 1U;
 			break;
 		default:
 			break;
@@ -591,14 +618,8 @@ void HAL_I2S_RxHalfCpltCallback(I2S_HandleTypeDef *hi2s)
     // RX moitié de buffer : 1re moitié prête
     if (hi2s->Instance == hi2s2.Instance)
     {
-#ifndef FixAudioI2S
-        osEventFlagsSet(BufferI2SHandle, I2S_FLAG_HALF);
-#else
         i2s_dma_flags |= I2S_DMA_FLAG_HALF;
         osSemaphoreRelease(AudioSemHandle);
-#endif
-        // optionnel : vérifier une erreur
-        // if ((int32_t)res < 0) { /* gérer l'erreur éventuelle */ }
     }
 
 }
@@ -608,20 +629,10 @@ void HAL_I2S_RxCpltCallback(I2S_HandleTypeDef *hi2s)
     // RX fin de buffer : 2e moitié prête
     if (hi2s->Instance == hi2s2.Instance)
     {
-#ifndef FixAudioI2S
-        osEventFlagsSet(BufferI2SHandle, I2S_FLAG_FULL);
-#else
 		i2s_dma_flags |= I2S_DMA_FLAG_FULL;
         osSemaphoreRelease(AudioSemHandle);
-#endif
-        // optionnel : vérifier une erreur
-        // if ((int32_t)res < 0) { /* gérer l'erreur éventuelle */ }
     }
 }
-
-
-
-
 /* USER CODE END 4 */
 
 /* USER CODE BEGIN Header_StartDefaultTask */
@@ -634,73 +645,137 @@ void HAL_I2S_RxCpltCallback(I2S_HandleTypeDef *hi2s)
 void StartDefaultTask(void *argument)
 {
   /* USER CODE BEGIN 5 */
-	uint32_t CMPT = 0;
-	uint32_t CMPT_OLD;
-	CMPT_OLD = CMPT;
-#ifdef DebugIT
-    uint32_t t0 = HAL_GetTick();
-#endif
+
   /* Infinite loop */
   for(;;)
   {
-	  CMPT = __HAL_TIM_GET_COUNTER(&htim1)/2;
-	  if (CMPT != CMPT_OLD) {
-		CMPT_OLD = __HAL_TIM_GET_COUNTER(&htim1)/2;
-		osEventFlagsSet(WaitNewValHandle, 0x00000001U);
-	  }
-#ifdef DebugIT
-        uint32_t now = HAL_GetTick();
-        if ((now - t0) > 1000) {
-            t0 = now;
-            uint32_t r = osEventFlagsSet(BufferI2SHandle, I2S_FLAG_HALF);
-            printf("DefaultTask: Set HALF, ret = 0x%08lX\r\n", r);
-        }
-#endif
-
-	osThreadYield();
+	osDelay(1);
   }
   /* USER CODE END 5 */
 }
 
-/* USER CODE BEGIN Header_StartReadEnc1 */
+/* USER CODE BEGIN Header_StartReadEncTask */
 /**
-* @brief Function implementing the ReadEnc1 thread.
+* @brief Function implementing the ReadEncTask thread.
 * @param argument: Not used
 * @retval None
 */
-/* USER CODE END Header_StartReadEnc1 */
-void StartReadEnc1(void *argument)
+/* USER CODE END Header_StartReadEncTask */
+void StartReadEncTask(void *argument)
 {
-  /* USER CODE BEGIN StartReadEnc1 */
+  /* USER CODE BEGIN StartReadEncTask */
+	uint32_t CMPT = 0;
+	uint32_t CMPT_OLD;
+	CMPT_OLD = CMPT;
+  /* Infinite loop */
+	for(;;)
+	{
+	  CMPT = EncoderSteps();
+	  if (CMPT != CMPT_OLD) {
+		  CMPT_OLD = CMPT;
+		  switch (i2s_enco_bp_flags) {
+			case 0:
+				osEventFlagsSet(WaitNewValHandle, I2S_ENCO_MENU_FLAG);
+				break;
+			case 1:
+				osEventFlagsSet(WaitNewValHandle, I2S_ENCO_SUB_MENU_FLAG);
+				break;
+			default:
+				break;
+		  }
+	  }
 
-	__HAL_TIM_SET_COUNTER(&htim1,0);						//Init de la valeur a 0
+	osThreadYield();
+	}
+  /* USER CODE END StartReadEncTask */
+}
+
+/* USER CODE BEGIN Header_StartAudioTask */
+/**
+* @brief Function implementing the AudioTask thread.
+* @param argument: Not used
+* @retval None
+*/
+/* USER CODE END Header_StartAudioTask */
+void StartAudioTask(void *argument)
+{
+  /* USER CODE BEGIN StartAudioTask */
+    uint32_t flags = 0;
+    if (HAL_I2S_Transmit_DMA(&hi2s3, (uint16_t*)i2s2_buffer, buffer_size) != HAL_OK)
+    {
+        printf("ERR: I2S3 RX DMA\n");
+        Error_Handler();
+    }
+    if (HAL_I2S_Receive_DMA(&hi2s2,(uint16_t*)i2s3_buffer, buffer_size) != HAL_OK)
+    {
+        printf("ERR: I2S2 TX DMA\n");
+        Error_Handler();
+    }
+    for (;;)
+    {
+		osSemaphoreAcquire(AudioSemHandle, osWaitForever);
+		flags = i2s_dma_flags;
+		if (flags & I2S_DMA_FLAG_HALF)
+		{
+			i2s_dma_flags &= ~I2S_DMA_FLAG_HALF;
+			memcpy(i2s2_buffer, i2s3_buffer, I2S_HALF_BUFFER_SIZE * sizeof(int16_t));
+		}
+
+		if (flags & I2S_DMA_FLAG_FULL)
+		{
+			i2s_dma_flags &= ~I2S_DMA_FLAG_FULL;
+			memcpy(&i2s2_buffer[I2S_HALF_BUFFER_SIZE],
+				   &i2s3_buffer[I2S_HALF_BUFFER_SIZE],
+				   I2S_HALF_BUFFER_SIZE * sizeof(int16_t));
+		}
+    }
+  /* USER CODE END StartAudioTask */
+}
+
+/* USER CODE BEGIN Header_StartDisplayTask */
+/**
+* @brief Function implementing the DisplayTask thread.
+* @param argument: Not used
+* @retval None
+*/
+/* USER CODE END Header_StartDisplayTask */
+void StartDisplayTask(void *argument)
+{
+  /* USER CODE BEGIN StartDisplayTask */
+
+	__HAL_TIM_SET_COUNTER(&htim1,0);
+	uint8_t menu_index = 0;
 	uint32_t flags;
 	char buffer[32] = " ";
 	lcd_clear();
-	MenuDisplay((__HAL_TIM_GET_COUNTER(&htim1)/2)%3, buffer, sizeof(buffer));
-#ifdef Debug
-	printf("%ld\r\n", (__HAL_TIM_GET_COUNTER(&htim1)/2)%3);
-	printf(buffer);
-#endif
+	MenuDisplay(EncoderSteps()%3, buffer, sizeof(buffer));
+	lcd_write(buffer);
+	lcd_put_cursor(1, 0);
+	SubMenuDisplay(menu_index, EncoderSteps(), buffer, sizeof(buffer));
 	lcd_write(buffer);
 
 	/* Infinite loop */
 	for(;;)
 	{
-
-		flags = osEventFlagsWait(WaitNewValHandle, 0x00000001U, osFlagsWaitAny, osWaitForever);
-
+		flags = osEventFlagsWait(WaitNewValHandle, I2S_ENCO_SUB_MENU_FLAG | I2S_ENCO_MENU_FLAG, osFlagsWaitAny, osWaitForever);
 		switch (flags) {
-			case 0x00000001U:
+			case I2S_ENCO_MENU_FLAG:
+				menu_index = EncoderSteps()%MENU_COUNT;
 				lcd_clear();
-				MenuDisplay((__HAL_TIM_GET_COUNTER(&htim1)/2)%3, buffer, sizeof(buffer));
-#ifdef Debug
-				printf("%ld\r\n", (__HAL_TIM_GET_COUNTER(&htim1)/2)%3);
-				printf(buffer);
-#endif
-				//snprintf(buffer,sizeof(buffer),"Encodeur : %ld", __HAL_TIM_GET_COUNTER(&htim1)/2);
+				MenuDisplay(menu_index, buffer, sizeof(buffer));
 				lcd_write(buffer);
-				osDelay(100);
+				lcd_put_cursor(1, 0);
+				lcd_write(blank_line);
+				lcd_put_cursor(1, 0);
+				SubMenuDisplay(menu_index, 0U, buffer, sizeof(buffer));
+				lcd_write(buffer);
+				break;
+			case I2S_ENCO_SUB_MENU_FLAG:
+				lcd_put_cursor(1, 0);
+				lcd_write(blank_line);
+				lcd_put_cursor(1, 0);
+				SubMenuDisplay(menu_index, EncoderSteps(), buffer, sizeof(buffer));
+				lcd_write(buffer);
 				break;
 			default:
 				lcd_clear();
@@ -709,133 +784,7 @@ void StartReadEnc1(void *argument)
 		}
 	}
 
-  /* USER CODE END StartReadEnc1 */
-}
-
-/* USER CODE BEGIN Header_AudioTaskIN */
-/**
-* @brief Function implementing the AudioTask thread.
-* @param argument: Not used
-* @retval None
-*/
-/* USER CODE END Header_AudioTaskIN */
-void AudioTaskIN(void *argument)
-{
-  /* USER CODE BEGIN AudioTaskIN */
-#ifndef DebugHard
-#ifndef FixAudioI2S
-	    uint32_t flags;
-#endif
-	    uint32_t flags = 0;
-	    if (HAL_I2S_Transmit_DMA(&hi2s3, (uint16_t*)i2s2_buffer, buffer_size) != HAL_OK)
-	    {
-	        printf("ERR: I2S3 RX DMA\n");
-	        Error_Handler();
-	    }
-	    if (HAL_I2S_Receive_DMA(&hi2s2,(uint16_t*)i2s3_buffer, buffer_size) != HAL_OK)
-	    {
-	        printf("ERR: I2S2 TX DMA\n");
-	        Error_Handler();
-	    }
-
-
-
-	    for (;;)
-	    {
-#ifndef FixAudioI2S
-	    	printf("AudioTaskIN started, waiting flags...\r\n");
-	        flags = osEventFlagsWait(BufferI2SHandle,
-	                                 I2S_FLAG_HALF | I2S_FLAG_FULL,
-	                                 osFlagsWaitAny,
-	                                 osWaitForever);
-#ifdef DebugIT
-	        if (flags & osFlagsError) {
-	            // Ici tu sais que ce n’est PAS un flag qui a réveillé,
-	            // mais une erreur (parameter, ISR, resource…)
-	            printf("EventFlags error = 0x%08lX\r\n", flags);
-	            continue;
-	        }
-	        printf("AudioTaskIN: flags = 0x%08lX\r\n", flags);
-#endif
-
-	        if (flags & I2S_FLAG_HALF)
-	        {
-	        	printf("AudioTaskIN: HALF flag set\r\n");
-	            HAL_GPIO_TogglePin(LD2_GPIO_Port, LD2_Pin);
-	            for (uint32_t i = 0; i < I2S_HALF_BUFFER_SIZE; i++)
-	            {
-	                i2s2_buffer[i] = i2s3_buffer[i];
-	            }
-	        }
-
-	        if (flags & I2S_FLAG_FULL)
-	        {
-	        	printf("AudioTaskIN: FULL flag set\r\n");
-	            HAL_GPIO_TogglePin(LD2_GPIO_Port, LD2_Pin);
-	            for (uint32_t i = 0; i < I2S_HALF_BUFFER_SIZE; i++)
-	            {
-	                i2s2_buffer[I2S_HALF_BUFFER_SIZE + i] =
-	                    i2s3_buffer[I2S_HALF_BUFFER_SIZE + i];
-	            }
-#else
-	            osSemaphoreAcquire(AudioSemHandle, osWaitForever);
-	            flags = i2s_dma_flags;
-
-	            if (flags & I2S_DMA_FLAG_HALF)
-	            {
-	                i2s_dma_flags &= ~I2S_DMA_FLAG_HALF;
-
-	                printf("AudioTaskIN: HALF flag set\r\n");
-	                for (uint32_t i = 0; i < I2S_HALF_BUFFER_SIZE; i++)
-	                {
-	                    i2s2_buffer[i] = i2s3_buffer[i];
-	                }
-	            }
-
-	            if (flags & I2S_DMA_FLAG_FULL)
-	            {
-	                i2s_dma_flags &= ~I2S_DMA_FLAG_FULL;
-
-	                printf("AudioTaskIN: FULL flag set\r\n");
-	                for (uint32_t i = 0; i < I2S_HALF_BUFFER_SIZE; i++)
-	                {
-	                    i2s2_buffer[I2S_HALF_BUFFER_SIZE + i] =
-	                        i2s3_buffer[I2S_HALF_BUFFER_SIZE + i];
-	                }
-	            }
-#endif
-
-
-#else
-	uint32_t flags;
-
-	    printf("AudioTaskIN started\r\n");
-
-	    for(;;)
-	    {
-	        flags = osEventFlagsWait(BufferI2SHandle,
-	                                 I2S_FLAG_HALF | I2S_FLAG_FULL,
-	                                 osFlagsWaitAny,
-	                                 osWaitForever);
-
-	        // Détection d’erreur CMSIS
-	        if (flags & osFlagsError) {
-	            printf("AudioTaskIN: osEventFlagsWait ERROR = 0x%08lX\r\n", flags);
-	            continue;
-	        }
-
-	        printf("AudioTaskIN: flags = 0x%08lX\r\n", flags);
-
-	        if (flags & I2S_FLAG_HALF) {
-	            HAL_GPIO_TogglePin(LD2_GPIO_Port, LD2_Pin);
-	        }
-	        if (flags & I2S_FLAG_FULL) {
-	            HAL_GPIO_TogglePin(LD2_GPIO_Port, LD2_Pin);
-	        }
-#endif
-	    }
-	    osDelay(1);
-  /* USER CODE END AudioTaskIN */
+  /* USER CODE END StartDisplayTask */
 }
 
 /**

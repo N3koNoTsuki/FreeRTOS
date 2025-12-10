@@ -14,6 +14,7 @@
  * @warning     Check i2c speed and pullups.
  */
 #include <lcd_st7032i.h>
+#include <string.h>
 
 I2C_HandleTypeDef _I2cHandler ;
 
@@ -87,17 +88,33 @@ void lcd_put_cursor(uint8_t line, uint8_t col)	// BACKLIGHT 1
 }
 
 
-void lcd_write(char *str)
-{	uint8_t i=0 ;
-	while(str[i]!='\0')
-	{
-		lcd_data(str[i]) ; // not optimized : i2c stop after each char
-		WAIT(1) ;
-		i++;
+void lcd_write(const char *str)
+{
+	if (str == NULL) {
+		return;
+	}
+
+	size_t len = strlen(str);
+	if (len == 0U) {
+		return;
+	}
+
+	// Send in chunks to avoid huge transfers; DDRAM auto-increments.
+	const size_t max_chunk = 16U;
+	uint8_t buffer[max_chunk + 1];
+	buffer[0] = DATA_TO_RAM;
+
+	size_t offset = 0;
+	while (offset < len) {
+		size_t chunk = len - offset;
+		if (chunk > max_chunk) {
+			chunk = max_chunk;
+		}
+		memcpy(&buffer[1], &str[offset], chunk);
+		HAL_I2C_Master_Transmit(&_I2cHandler, MD21605_I2C_ADDRESS, buffer, chunk + 1, 2);
+		offset += chunk;
 	}
 }
-
-
 
 
 

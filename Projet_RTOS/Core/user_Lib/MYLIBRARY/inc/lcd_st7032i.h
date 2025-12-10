@@ -89,7 +89,7 @@
 //--------------- USER LCD FUNCTIONS ---------------
 void lcd_init(I2C_HandleTypeDef i2cHandler) ;
 void lcd_put_cursor(uint8_t line, uint8_t col);
-void lcd_write(char *str);
+void lcd_write(const char *str);
 
 void lcd_set_display(bool on_off, bool cursor_on_off, bool cursor_blink_on_off) ;
 

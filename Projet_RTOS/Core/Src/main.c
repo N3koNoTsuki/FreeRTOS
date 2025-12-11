@@ -26,6 +26,8 @@
 #include "lcd_st7032i.h"
 #include "stdio.h"
 #include "string.h"
+#include "limits.h"
+#include "dsp/filtering_functions.h"
 /* USER CODE END Includes */
 
 /* Private typedef -----------------------------------------------------------*/
@@ -39,6 +41,12 @@
 #define buffer_size (I2S_HALF_BUFFER_SIZE*2)
 #define I2S_FLAG_HALF 0x00000001U
 #define I2S_FLAG_FULL 0x00000002U
+#define I2S_DMA_FLAG_HALF  (1U << 0)
+#define I2S_DMA_FLAG_FULL  (1U << 1)
+#define I2S_ENCO_SUB_MENU_FLAG   (1U << 0)
+#define I2S_ENCO_MENU_FLAG 		 (1U << 1)
+#define AUDIO_GAIN_MIN   (-3)
+#define AUDIO_GAIN_MAX   (3)
 
 /* USER CODE END PD */
 
@@ -100,17 +108,10 @@ const osEventFlagsAttr_t WaitNewVal_attributes = {
 /* USER CODE BEGIN PV */
 int16_t i2s3_buffer[buffer_size];
 int16_t i2s2_buffer[buffer_size];
-
-/* Flags posés par les callbacks DMA */
+int32_t GainValue = 0;
 volatile uint32_t i2s_dma_flags = 0;
 volatile uint32_t i2s_enco_bp_flags = 0;
-
 static const char blank_line[] = "                ";
-
-#define I2S_DMA_FLAG_HALF  (1U << 0)
-#define I2S_DMA_FLAG_FULL  (1U << 1)
-#define I2S_ENCO_SUB_MENU_FLAG   (1U << 0)
-#define I2S_ENCO_MENU_FLAG 		 (1U << 1)
 
 /* USER CODE END PV */
 
@@ -140,6 +141,25 @@ static inline uint32_t EncoderSteps(void)
     return __HAL_TIM_GET_COUNTER(&htim1) >> 1;
 }
 
+static inline void ApplyGain(const int16_t *src, int16_t *dst, uint32_t length, int32_t gain)
+{
+	for (uint32_t i = 0; i < length; i++) {
+		int32_t Sample = src[i];
+		if (gain >= 0) {
+			Sample <<= gain;
+		} else {
+			Sample >>= (-gain);
+		}
+
+		if (Sample > INT16_MAX){
+			Sample = INT16_MAX;
+		}
+		else if (Sample < INT16_MIN){
+			Sample = INT16_MIN;
+		}
+		dst[i] = (int16_t)Sample;
+	}
+}
 /* USER CODE END 0 */
 
 /**
@@ -185,9 +205,9 @@ int main(void)
   HAL_TIM_Encoder_Start(&htim1, TIM_CHANNEL_ALL);
   lcd_init(hi2c1);
   lcd_write("HELLO");
-  lcd_write("Neko no Lib");
-  while(1==1);
-  printf("TEST\r\n");
+  lcd_put_cursor(1,0);
+  lcd_write("Neko no Tsuki");
+  printf("Neko no Projet\r\n");
   /* USER CODE END 2 */
 
   /* Init scheduler */
@@ -591,11 +611,11 @@ static void MX_GPIO_Init(void)
 void HAL_GPIO_EXTI_Callback(uint16_t GPIO_Pin)
 {
 	switch (GPIO_Pin) {
-		case Bp_Blue_Pin:
+		case enco_Bp_Pin:
 			HAL_GPIO_TogglePin(LD2_GPIO_Port, LD2_Pin);
 			__HAL_TIM_SET_COUNTER(&htim1,0);//On reset le compteur lors de l'appuie sur Bp
 			break;
-		case enco_Bp_Pin:
+		case Bp_Blue_Pin:
 			//Ajouter action pour le bouton de l'encodeur
 			HAL_GPIO_TogglePin(LD2_GPIO_Port, LD2_Pin);
 			__HAL_TIM_SET_COUNTER(&htim1,0);//On reset le compteur lors de l'appuie sur Bp
@@ -667,22 +687,36 @@ void StartReadEncTask(void *argument)
 	uint32_t CMPT = 0;
 	uint32_t CMPT_OLD;
 	CMPT_OLD = CMPT;
+	uint32_t last_mode = i2s_enco_bp_flags;
   /* Infinite loop */
 	for(;;)
 	{
+	  if (i2s_enco_bp_flags != last_mode) {
+		  CMPT_OLD = EncoderSteps();
+		  last_mode = i2s_enco_bp_flags;
+	  }
+
 	  CMPT = EncoderSteps();
-	  if (CMPT != CMPT_OLD) {
-		  CMPT_OLD = CMPT;
+	  int32_t delta = (int32_t)((int16_t)(CMPT - CMPT_OLD));
+	  if (delta != 0) {
 		  switch (i2s_enco_bp_flags) {
 			case 0:
 				osEventFlagsSet(WaitNewValHandle, I2S_ENCO_MENU_FLAG);
 				break;
 			case 1:
+				GainValue += delta;
+				if (GainValue < AUDIO_GAIN_MIN) {
+					GainValue = AUDIO_GAIN_MIN;
+				}
+				else if(GainValue > AUDIO_GAIN_MAX){
+					GainValue = AUDIO_GAIN_MAX;
+				}
 				osEventFlagsSet(WaitNewValHandle, I2S_ENCO_SUB_MENU_FLAG);
 				break;
 			default:
 				break;
 		  }
+		  CMPT_OLD = CMPT;
 	  }
 
 	osThreadYield();
@@ -700,7 +734,6 @@ void StartReadEncTask(void *argument)
 void StartAudioTask(void *argument)
 {
   /* USER CODE BEGIN StartAudioTask */
-    uint32_t flags = 0;
     if (HAL_I2S_Transmit_DMA(&hi2s3, (uint16_t*)i2s2_buffer, buffer_size) != HAL_OK)
     {
         printf("ERR: I2S3 RX DMA\n");
@@ -714,19 +747,19 @@ void StartAudioTask(void *argument)
     for (;;)
     {
 		osSemaphoreAcquire(AudioSemHandle, osWaitForever);
-		flags = i2s_dma_flags;
-		if (flags & I2S_DMA_FLAG_HALF)
+		if (i2s_dma_flags & I2S_DMA_FLAG_HALF)
 		{
 			i2s_dma_flags &= ~I2S_DMA_FLAG_HALF;
-			memcpy(i2s2_buffer, i2s3_buffer, I2S_HALF_BUFFER_SIZE * sizeof(int16_t));
+			//memcpy(i2s2_buffer, i2s3_buffer, I2S_HALF_BUFFER_SIZE * sizeof(int16_t));
+			ApplyGain(i2s3_buffer, i2s2_buffer, I2S_HALF_BUFFER_SIZE, GainValue);
+
 		}
 
-		if (flags & I2S_DMA_FLAG_FULL)
+		if (i2s_dma_flags & I2S_DMA_FLAG_FULL)
 		{
 			i2s_dma_flags &= ~I2S_DMA_FLAG_FULL;
-			memcpy(&i2s2_buffer[I2S_HALF_BUFFER_SIZE],
-				   &i2s3_buffer[I2S_HALF_BUFFER_SIZE],
-				   I2S_HALF_BUFFER_SIZE * sizeof(int16_t));
+			//memcpy(&i2s2_buffer[I2S_HALF_BUFFER_SIZE], &i2s3_buffer[I2S_HALF_BUFFER_SIZE], I2S_HALF_BUFFER_SIZE * sizeof(int16_t));
+			ApplyGain(&i2s3_buffer[I2S_HALF_BUFFER_SIZE], &i2s2_buffer[I2S_HALF_BUFFER_SIZE], I2S_HALF_BUFFER_SIZE, GainValue);
 		}
     }
   /* USER CODE END StartAudioTask */
@@ -747,12 +780,12 @@ void StartDisplayTask(void *argument)
 	uint8_t menu_index = 0;
 	uint32_t flags;
 	char buffer[32] = " ";
-	lcd_clear();
-	MenuDisplay(EncoderSteps()%3, buffer, sizeof(buffer));
-	lcd_write(buffer);
-	lcd_put_cursor(1, 0);
-	SubMenuDisplay(menu_index, EncoderSteps(), buffer, sizeof(buffer));
-	lcd_write(buffer);
+  lcd_clear();
+  MenuDisplay(EncoderSteps()%MENU_COUNT, buffer, sizeof(buffer));
+  lcd_write(buffer);
+  lcd_put_cursor(1, 0);
+  SubMenuDisplay(menu_index, GainValue, buffer, sizeof(buffer));
+  lcd_write(buffer);
 
 	/* Infinite loop */
 	for(;;)
@@ -767,14 +800,22 @@ void StartDisplayTask(void *argument)
 				lcd_put_cursor(1, 0);
 				lcd_write(blank_line);
 				lcd_put_cursor(1, 0);
-				SubMenuDisplay(menu_index, 0U, buffer, sizeof(buffer));
+				if (menu_index == 0U) {
+					SubMenuDisplay(menu_index, GainValue, buffer, sizeof(buffer));
+				} else {
+					SubMenuDisplay(menu_index, 0, buffer, sizeof(buffer));
+				}
 				lcd_write(buffer);
 				break;
 			case I2S_ENCO_SUB_MENU_FLAG:
 				lcd_put_cursor(1, 0);
 				lcd_write(blank_line);
 				lcd_put_cursor(1, 0);
-				SubMenuDisplay(menu_index, EncoderSteps(), buffer, sizeof(buffer));
+				if (menu_index == 0U) {
+					SubMenuDisplay(menu_index, GainValue, buffer, sizeof(buffer));
+				} else {
+					SubMenuDisplay(menu_index, EncoderSteps(), buffer, sizeof(buffer));
+				}
 				lcd_write(buffer);
 				break;
 			default:

@@ -24,6 +24,7 @@ C_DEPS :=
 SUBDIRS := \
 Core/Src \
 Core/Startup \
+Core/user_Lib/CMSIS_DSP/ComputeLibrary/Source \
 Core/user_Lib/MYLIBRARY/src \
 Core/user_Lib/NekoNoLib/src \
 Drivers/STM32F4xx_HAL_Driver/Src \

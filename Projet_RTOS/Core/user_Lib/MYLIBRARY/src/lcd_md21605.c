@@ -99,7 +99,6 @@ void lcd_write(const char *str)
 		return;
 	}
 
-	// Send in chunks to avoid huge transfers; DDRAM auto-increments.
 	const size_t max_chunk = 16U;
 	uint8_t buffer[max_chunk + 1];
 	buffer[0] = DATA_TO_RAM;

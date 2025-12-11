@@ -17,5 +17,5 @@
 #define BASS_COUNT 3U
 
 size_t MenuDisplay(uint8_t _Id, char* _Buf, size_t _lenghtBuf);
-size_t SubMenuDisplay(uint8_t _Id_ROW, uint8_t _Id, char* _Buf, size_t _lenghtBuf);
+size_t SubMenuDisplay(uint8_t _Id_ROW, int16_t _Value, char* _Buf, size_t _lenghtBuf);
 #endif

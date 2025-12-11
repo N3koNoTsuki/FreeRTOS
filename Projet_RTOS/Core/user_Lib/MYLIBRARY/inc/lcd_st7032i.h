@@ -75,7 +75,7 @@
 ////////////////////////////////////////////////////////////////////////
 #define ENTRY_MODE	0x04
 #define I_D (1<<I_D_BIT)	// 1:increment(right) 0:decrement(left)
-#define S	(1<<S_BIT)	// 1: shift entire display 0:none
+#define LCD_SHIFT_FLAG	(1<<S_BIT)		// 1: shift entire display 0:none
 #define I_D_BIT 1
 #define S_BIT	0
 ////////////////////////////////////////////////////////////////////////

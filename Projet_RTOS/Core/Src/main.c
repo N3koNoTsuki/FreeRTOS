@@ -26,8 +26,7 @@
 #include "lcd_st7032i.h"
 #include "stdio.h"
 #include "string.h"
-#include "limits.h"
-#include "dsp/filtering_functions.h"
+#include "stdint.h"
 /* USER CODE END Includes */
 
 /* Private typedef -----------------------------------------------------------*/
@@ -38,7 +37,7 @@
 /* Private define ------------------------------------------------------------*/
 /* USER CODE BEGIN PD */
 #define I2S_HALF_BUFFER_SIZE 256U
-#define buffer_size (I2S_HALF_BUFFER_SIZE*2)
+#define I2S_BUFFER_SIZE (I2S_HALF_BUFFER_SIZE*2)
 #define I2S_FLAG_HALF 0x00000001U
 #define I2S_FLAG_FULL 0x00000002U
 #define I2S_DMA_FLAG_HALF  (1U << 0)
@@ -47,7 +46,6 @@
 #define I2S_ENCO_MENU_FLAG 		 (1U << 1)
 #define AUDIO_GAIN_MIN   (-3)
 #define AUDIO_GAIN_MAX   (3)
-
 /* USER CODE END PD */
 
 /* Private macro -------------------------------------------------------------*/
@@ -106,8 +104,8 @@ const osEventFlagsAttr_t WaitNewVal_attributes = {
   .name = "WaitNewVal"
 };
 /* USER CODE BEGIN PV */
-int16_t i2s3_buffer[buffer_size];
-int16_t i2s2_buffer[buffer_size];
+int16_t i2s3_buffer[I2S_BUFFER_SIZE];
+int16_t i2s2_buffer[I2S_BUFFER_SIZE];
 int32_t GainValue = 0;
 volatile uint32_t i2s_dma_flags = 0;
 volatile uint32_t i2s_enco_bp_flags = 0;
@@ -115,6 +113,7 @@ static const char blank_line[] = "                ";
 int8_t menu_index = 0;
 int8_t sub_menu_index = 0;
 int16_t delta = 0;
+
 /* USER CODE END PV */
 
 /* Private function prototypes -----------------------------------------------*/
@@ -754,12 +753,12 @@ void StartReadEncTask(void *argument)
 void StartAudioTask(void *argument)
 {
   /* USER CODE BEGIN StartAudioTask */
-    if (HAL_I2S_Transmit_DMA(&hi2s3, (uint16_t*)i2s2_buffer, buffer_size) != HAL_OK)
+    if (HAL_I2S_Transmit_DMA(&hi2s3, (uint16_t*)i2s2_buffer, I2S_BUFFER_SIZE) != HAL_OK)
     {
         printf("ERR: I2S3 RX DMA\n");
         Error_Handler();
     }
-    if (HAL_I2S_Receive_DMA(&hi2s2,(uint16_t*)i2s3_buffer, buffer_size) != HAL_OK)
+    if (HAL_I2S_Receive_DMA(&hi2s2,(uint16_t*)i2s3_buffer, I2S_BUFFER_SIZE) != HAL_OK)
     {
         printf("ERR: I2S2 TX DMA\n");
         Error_Handler();

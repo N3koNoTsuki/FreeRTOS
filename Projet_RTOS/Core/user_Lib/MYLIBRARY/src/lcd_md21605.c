@@ -23,9 +23,9 @@ void lcd_init(I2C_HandleTypeDef i2cHandler)
 {
 	_I2cHandler = i2cHandler ;
 	// Init sequence from manual
-	lcd_instruction(FUNC_SET|DL|N) ;
+	lcd_instruction(FUNC_SET|DL|N45) ;
 	WAIT(1) ;
-	lcd_instruction(FUNC_SET|DL|N|IS) ;
+	lcd_instruction(FUNC_SET|DL|N45|IS) ;
 	WAIT(1) ;
 	lcd_instruction(SET_FREQ|0b100) ;	// 4 is ~183Hz@3V
 	WAIT(1) ;

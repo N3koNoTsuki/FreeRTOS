@@ -28,7 +28,7 @@
 // DL : Interface data length control bit : 1:8b 0:4b (8b in ST7032i)
 #define DL (1<<DL_BIT)
 // N : Display line number control bit 1:2L 0:1L
-#define N (1<<N_BIT)
+#define N45 (1<<N_BIT)
 // DH : Double height font type control bit 0:normal
 #define DH (1<<DH_BIT)
 // IS : normal/extension instruction select 1:extended 0:normal

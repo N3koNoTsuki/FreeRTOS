@@ -27,25 +27,25 @@ Idx Name          Size      VMA       LMA       File off  Algn
                   ALLOC
  11 .ARM.attributes 00000030  00000000  00000000  0000d06c  2**0
                   CONTENTS, READONLY
- 12 .debug_info   0001f926  00000000  00000000  0000d09c  2**0
+ 12 .debug_info   0001f918  00000000  00000000  0000d09c  2**0
                   CONTENTS, READONLY, DEBUGGING, OCTETS
- 13 .debug_abbrev 00004485  00000000  00000000  0002c9c2  2**0
+ 13 .debug_abbrev 00004485  00000000  00000000  0002c9b4  2**0
                   CONTENTS, READONLY, DEBUGGING, OCTETS
- 14 .debug_aranges 00001b18  00000000  00000000  00030e48  2**3
+ 14 .debug_aranges 00001b18  00000000  00000000  00030e40  2**3
                   CONTENTS, READONLY, DEBUGGING, OCTETS
- 15 .debug_rnglists 00001525  00000000  00000000  00032960  2**0
+ 15 .debug_rnglists 00001525  00000000  00000000  00032958  2**0
                   CONTENTS, READONLY, DEBUGGING, OCTETS
- 16 .debug_macro  00005dbc  00000000  00000000  00033e85  2**0
+ 16 .debug_macro  00005647  00000000  00000000  00033e7d  2**0
                   CONTENTS, READONLY, DEBUGGING, OCTETS
- 17 .debug_line   0001f10d  00000000  00000000  00039c41  2**0
+ 17 .debug_line   0001ef53  00000000  00000000  000394c4  2**0
                   CONTENTS, READONLY, DEBUGGING, OCTETS
- 18 .debug_str    000e3a51  00000000  00000000  00058d4e  2**0
+ 18 .debug_str    000e1f9b  00000000  00000000  00058417  2**0
                   CONTENTS, READONLY, DEBUGGING, OCTETS
- 19 .comment      00000043  00000000  00000000  0013c79f  2**0
+ 19 .comment      00000043  00000000  00000000  0013a3b2  2**0
                   CONTENTS, READONLY
- 20 .debug_frame  00007c38  00000000  00000000  0013c7e4  2**2
+ 20 .debug_frame  00007c38  00000000  00000000  0013a3f8  2**2
                   CONTENTS, READONLY, DEBUGGING, OCTETS
- 21 .debug_line_str 00000073  00000000  00000000  0014441c  2**0
+ 21 .debug_line_str 00000073  00000000  00000000  00142030  2**0
                   CONTENTS, READONLY, DEBUGGING, OCTETS
 
 Disassembly of section .text:
@@ -1965,7 +1965,7 @@ void StartAudioTask(void *argument)
  8000ec0:	af00      	add	r7, sp, #0
  8000ec2:	6078      	str	r0, [r7, #4]
   /* USER CODE BEGIN StartAudioTask */
-    if (HAL_I2S_Transmit_DMA(&hi2s3, (uint16_t*)i2s2_buffer, buffer_size) != HAL_OK)
+    if (HAL_I2S_Transmit_DMA(&hi2s3, (uint16_t*)i2s2_buffer, I2S_BUFFER_SIZE) != HAL_OK)
  8000ec4:	f44f 7200 	mov.w	r2, #512	@ 0x200
  8000ec8:	4924      	ldr	r1, [pc, #144]	@ (8000f5c <StartAudioTask+0xa0>)
  8000eca:	4825      	ldr	r0, [pc, #148]	@ (8000f60 <StartAudioTask+0xa4>)
@@ -1980,7 +1980,7 @@ void StartAudioTask(void *argument)
         Error_Handler();
  8000edc:	f000 f974 	bl	80011c8 <Error_Handler>
     }
-    if (HAL_I2S_Receive_DMA(&hi2s2,(uint16_t*)i2s3_buffer, buffer_size) != HAL_OK)
+    if (HAL_I2S_Receive_DMA(&hi2s2,(uint16_t*)i2s3_buffer, I2S_BUFFER_SIZE) != HAL_OK)
  8000ee0:	f44f 7200 	mov.w	r2, #512	@ 0x200
  8000ee4:	4920      	ldr	r1, [pc, #128]	@ (8000f68 <StartAudioTask+0xac>)
  8000ee6:	4821      	ldr	r0, [pc, #132]	@ (8000f6c <StartAudioTask+0xb0>)
@@ -3941,13 +3941,13 @@ void lcd_init(I2C_HandleTypeDef i2cHandler)
  8001a08:	4619      	mov	r1, r3
  8001a0a:	f008 feee 	bl	800a7ea <memcpy>
 	// Init sequence from manual
-	lcd_instruction(FUNC_SET|DL|N) ;
+	lcd_instruction(FUNC_SET|DL|N45) ;
  8001a0e:	2038      	movs	r0, #56	@ 0x38
  8001a10:	f000 f866 	bl	8001ae0 <lcd_instruction>
 	WAIT(1) ;
  8001a14:	2001      	movs	r0, #1
  8001a16:	f000 f9d5 	bl	8001dc4 <HAL_Delay>
-	lcd_instruction(FUNC_SET|DL|N|IS) ;
+	lcd_instruction(FUNC_SET|DL|N45|IS) ;
  8001a1a:	2039      	movs	r0, #57	@ 0x39
  8001a1c:	f000 f860 	bl	8001ae0 <lcd_instruction>
 	WAIT(1) ;

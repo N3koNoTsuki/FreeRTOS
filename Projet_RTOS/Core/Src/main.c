@@ -112,7 +112,9 @@ int32_t GainValue = 0;
 volatile uint32_t i2s_dma_flags = 0;
 volatile uint32_t i2s_enco_bp_flags = 0;
 static const char blank_line[] = "                ";
-uint8_t menu_index = 0;
+int8_t menu_index = 0;
+int8_t sub_menu_index = 0;
+int16_t delta = 0;
 /* USER CODE END PV */
 
 /* Private function prototypes -----------------------------------------------*/
@@ -136,9 +138,25 @@ void StartDisplayTask(void *argument);
 
 /* Private user code ---------------------------------------------------------*/
 /* USER CODE BEGIN 0 */
-static inline uint32_t EncoderSteps(void)
+static inline int16_t EncoderSteps(void)
 {
-    return __HAL_TIM_GET_COUNTER(&htim1) >> 1;
+	// Convert 0-65535 to -32768 to +32767
+	int16_t Val = (int16_t)__HAL_TIM_GET_COUNTER(&htim1)>>1;
+    return Val;
+}
+
+static inline int8_t ClampMenuIndex(int32_t value, int32_t max_index, int32_t min_index)
+{
+	const int32_t max_idx = max_index;
+	const int32_t min_idx = min_index;
+	int32_t clamped_value = value;
+	if (clamped_value <= min_idx) {
+		clamped_value = min_idx;
+	}
+	if (clamped_value >= max_idx) {
+		clamped_value = max_idx;
+	}
+	return (int8_t)clamped_value;
 }
 
 static inline void ApplyGain(const int16_t *src, int16_t *dst, uint32_t length, int32_t gain)
@@ -610,19 +628,18 @@ static void MX_GPIO_Init(void)
 /* USER CODE BEGIN 4 */
 void HAL_GPIO_EXTI_Callback(uint16_t GPIO_Pin)
 {
-	switch (GPIO_Pin) {
-		case enco_Bp_Pin:
-			HAL_GPIO_TogglePin(LD2_GPIO_Port, LD2_Pin);
-			__HAL_TIM_SET_COUNTER(&htim1,0);//On reset le compteur lors de l'appuie sur Bp
-			break;
-		case Bp_Blue_Pin:
-			//Ajouter action pour le bouton de l'encodeur
-			HAL_GPIO_TogglePin(LD2_GPIO_Port, LD2_Pin);
-			__HAL_TIM_SET_COUNTER(&htim1,0);//On reset le compteur lors de l'appuie sur Bp
-			i2s_enco_bp_flags ^= 1U;
-			break;
-		default:
-			break;
+	if(GPIO_Pin == enco_Bp_Pin){
+		HAL_GPIO_TogglePin(LD2_GPIO_Port, LD2_Pin);
+		__HAL_TIM_SET_COUNTER(&htim1,0);//On reset le compteur lors de l'appuie sur Bp
+	}
+	else if(GPIO_Pin == Bp_Blue_Pin){
+		//Ajouter action pour le bouton bleu
+		HAL_GPIO_TogglePin(LD2_GPIO_Port, LD2_Pin);
+		__HAL_TIM_SET_COUNTER(&htim1,0);//On reset le compteur lors de l'appuie sur Bp
+		i2s_enco_bp_flags ^= 1U;
+	}
+	else{
+		//Should not happen
 	}
 }
 
@@ -669,7 +686,7 @@ void StartDefaultTask(void *argument)
   /* Infinite loop */
   for(;;)
   {
-	osDelay(1);
+    osDelay(100000);
   }
   /* USER CODE END 5 */
 }
@@ -684,8 +701,8 @@ void StartDefaultTask(void *argument)
 void StartReadEncTask(void *argument)
 {
   /* USER CODE BEGIN StartReadEncTask */
-	uint32_t CMPT = 0;
-	uint32_t CMPT_OLD;
+	int16_t CMPT = 0;
+	int16_t CMPT_OLD;
 	CMPT_OLD = CMPT;
 	uint32_t last_mode = i2s_enco_bp_flags;
   /* Infinite loop */
@@ -697,13 +714,9 @@ void StartReadEncTask(void *argument)
 	  }
 
 	  CMPT = EncoderSteps();
-	  int32_t delta = (int32_t)((int16_t)(CMPT - CMPT_OLD));
+	  delta = (int16_t)(CMPT - CMPT_OLD);
 	  if (delta != 0) {
-		  switch (i2s_enco_bp_flags) {
-			case 0:
-				osEventFlagsSet(WaitNewValHandle, I2S_ENCO_MENU_FLAG);
-				break;
-			case 1:
+		  if(i2s_enco_bp_flags == 1U){
 				if(menu_index == 0U)
 				{
 					GainValue += delta;
@@ -715,9 +728,13 @@ void StartReadEncTask(void *argument)
 					}
 				}
 				osEventFlagsSet(WaitNewValHandle, I2S_ENCO_SUB_MENU_FLAG);
-				break;
-			default:
-				break;
+		  }
+		  else if(i2s_enco_bp_flags == 0U){
+			  //Menu navigation
+				osEventFlagsSet(WaitNewValHandle, I2S_ENCO_MENU_FLAG);
+		  }
+		  else{
+			  //Should not happen
 		  }
 		  CMPT_OLD = CMPT;
 	  }
@@ -784,7 +801,8 @@ void StartDisplayTask(void *argument)
 	uint32_t flags;
 	char buffer[32] = " ";
   lcd_clear();
-  MenuDisplay(EncoderSteps()%MENU_COUNT, buffer, sizeof(buffer));
+  menu_index = ClampMenuIndex(EncoderSteps(), MENU_COUNT - 1, 0);
+  MenuDisplay(menu_index, buffer, sizeof(buffer));
   lcd_write(buffer);
   lcd_put_cursor(1, 0);
   SubMenuDisplay(menu_index, GainValue, buffer, sizeof(buffer));
@@ -794,40 +812,44 @@ void StartDisplayTask(void *argument)
 	for(;;)
 	{
 		flags = osEventFlagsWait(WaitNewValHandle, I2S_ENCO_SUB_MENU_FLAG | I2S_ENCO_MENU_FLAG, osFlagsWaitAny, osWaitForever);
-		switch (flags) {
-			case I2S_ENCO_MENU_FLAG:
-				menu_index = EncoderSteps()%MENU_COUNT;
-				lcd_clear();
-				MenuDisplay(menu_index, buffer, sizeof(buffer));
-				lcd_write(buffer);
-				lcd_put_cursor(1, 0);
-				lcd_write(blank_line);
-				lcd_put_cursor(1, 0);
-				if (menu_index == 0U) {
-					SubMenuDisplay(menu_index, GainValue, buffer, sizeof(buffer));
-				} else {
-					SubMenuDisplay(menu_index, 0, buffer, sizeof(buffer));
-				}
-				lcd_write(buffer);
-				break;
-			case I2S_ENCO_SUB_MENU_FLAG:
-				lcd_put_cursor(1, 0);
-				lcd_write(blank_line);
-				lcd_put_cursor(1, 0);
-				if (menu_index == 0U) {
-					SubMenuDisplay(menu_index, GainValue, buffer, sizeof(buffer));
-				} else {
-					SubMenuDisplay(menu_index, EncoderSteps(), buffer, sizeof(buffer));
-				}
-				lcd_write(buffer);
-				break;
-			default:
-				lcd_clear();
-				lcd_write("C kc");
-				break;
+
+		if(flags == I2S_ENCO_MENU_FLAG){
+			menu_index = ClampMenuIndex((int32_t)menu_index + (int32_t)delta, MENU_COUNT - 1, 0);
+			printf("Delta: %d\r\n", delta);
+			printf("Menu index: %d\r\n", menu_index);
+			lcd_clear();
+			MenuDisplay(menu_index , buffer, sizeof(buffer));
+			lcd_write(buffer);
+			lcd_put_cursor(1, 0);
+			lcd_write(blank_line);
+			lcd_put_cursor(1, 0);
+			if (menu_index == 0U) {
+				SubMenuDisplay(menu_index, GainValue, buffer, sizeof(buffer));
+			} else {
+				SubMenuDisplay(menu_index, 0, buffer, sizeof(buffer));
+			}
+			lcd_write(buffer);
+		}
+
+		else if (flags == I2S_ENCO_SUB_MENU_FLAG) {
+
+			sub_menu_index = ClampMenuIndex((int32_t)sub_menu_index + (int32_t)delta, 4, 0);
+			lcd_put_cursor(1, 0);
+			lcd_write(blank_line);
+			lcd_put_cursor(1, 0);
+			if (menu_index == 0U) {
+				SubMenuDisplay(menu_index, GainValue, buffer, sizeof(buffer));
+			} else {
+				SubMenuDisplay(menu_index, sub_menu_index, buffer, sizeof(buffer));
+			}
+			lcd_write(buffer);
+		}
+
+		else{
+			lcd_clear();
+			lcd_write("C kc");
 		}
 	}
-
   /* USER CODE END StartDisplayTask */
 }
 

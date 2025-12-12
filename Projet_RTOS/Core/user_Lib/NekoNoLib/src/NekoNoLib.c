@@ -27,6 +27,7 @@ static const char* const kMenuTexts[MENU_COUNT] = {
 size_t MenuDisplay(uint8_t _Id, char* _Buf, size_t _lenghtBuf){
 
 	if ((_Buf == NULL) || (_lenghtBuf == 0U)) {
+		snprintf(_Buf, _lenghtBuf, "ErrorM   : N/A");
 		return (size_t)-1;
 	}
 
@@ -54,31 +55,29 @@ size_t SubMenuDisplay(uint8_t _Id_ROW, int16_t _Value, char* _Buf, size_t _lengh
 
 	size_t Rtv = (size_t)-1;
 
-	switch (_Id_ROW) {
-		case 0: {
-			Rtv = 0;
-			int16_t clamped = _Value;
-			if (clamped > 256) {
-				clamped = 256;
-			}
-			else if (clamped < -256) {
-				clamped = -256;
-			}
-			snprintf(_Buf,_lenghtBuf,"Volume : %+d", (int)clamped);
-			break;
+	if(_Id_ROW == 0U){
+		Rtv = 0;
+		int16_t clamped = _Value;
+		if (clamped > 256) {
+			clamped = 256;
 		}
-		case 1: {
-			Rtv = 1;
-			snprintf(_Buf,_lenghtBuf,"Submenu : %i", (int)_Value);
-			break;
+		else if (clamped < -256) {
+			clamped = -256;
 		}
-		case 2:
-			Rtv = 2;
-			snprintf(_Buf,_lenghtBuf,"Info    : %d", (int)_Value);
-			break;
-		default:
-			Rtv = (size_t)-1;
-			break;
+		snprintf(_Buf,_lenghtBuf,"Volume : %+d", (int)clamped);
 	}
+	else if(_Id_ROW == 1U){
+		Rtv = 1;
+		snprintf(_Buf,_lenghtBuf,"Submenu : %i", (int)_Value);
+	}
+	else if(_Id_ROW == 2U){
+		Rtv = 2;
+		snprintf(_Buf,_lenghtBuf,"Info    : %d", (int)_Value);
+	}
+	else{
+		Rtv = (size_t)-1;
+		snprintf(_Buf,_lenghtBuf,"ErrorSb   : N/A");
+	}
+
 	return Rtv;
 }

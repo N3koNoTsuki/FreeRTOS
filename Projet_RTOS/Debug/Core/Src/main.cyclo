@@ -15,8 +15,8 @@
 ../Core/Src/main.c:636:6:HAL_I2S_RxHalfCpltCallback	2
 ../Core/Src/main.c:647:6:HAL_I2S_RxCpltCallback	2
 ../Core/Src/main.c:665:6:StartDefaultTask	1
-../Core/Src/main.c:684:6:StartReadEncTask	7
-../Core/Src/main.c:734:6:StartAudioTask	5
-../Core/Src/main.c:775:6:StartDisplayTask	5
-../Core/Src/main.c:839:6:HAL_TIM_PeriodElapsedCallback	2
-../Core/Src/main.c:857:6:Error_Handler	1
+../Core/Src/main.c:684:6:StartReadEncTask	8
+../Core/Src/main.c:737:6:StartAudioTask	5
+../Core/Src/main.c:778:6:StartDisplayTask	5
+../Core/Src/main.c:842:6:HAL_TIM_PeriodElapsedCallback	2
+../Core/Src/main.c:860:6:Error_Handler	1

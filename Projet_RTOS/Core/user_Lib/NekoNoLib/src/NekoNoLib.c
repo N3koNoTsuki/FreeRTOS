@@ -12,15 +12,11 @@
 
 static const char* const kMenuTexts[MENU_COUNT] = {
 	"Menu 1/3 Vol",
-	"Menu 2/3 Bass",
-	"Menu 3/3 Info",
+	"Menu 2/3 N/A",
+	"Menu 3/3 N/A",
 };
 
-static const char* const kBassTexts[BASS_COUNT] = {
-	"Bass : Low ",
-	"Bass : Mid ",
-	"Bass : High",
-};
+
 
 /**
   * @brief  Return current menu to be display
@@ -73,8 +69,7 @@ size_t SubMenuDisplay(uint8_t _Id_ROW, int16_t _Value, char* _Buf, size_t _lengh
 		}
 		case 1: {
 			Rtv = 1;
-			uint8_t idx = (uint8_t)((_Value < 0 ? -_Value : _Value) % BASS_COUNT);
-			snprintf(_Buf,_lenghtBuf,"%s", kBassTexts[idx]);
+			snprintf(_Buf,_lenghtBuf,"Submenu : %i", (int)_Value);
 			break;
 		}
 		case 2:

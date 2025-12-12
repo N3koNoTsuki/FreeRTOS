@@ -112,7 +112,7 @@ int32_t GainValue = 0;
 volatile uint32_t i2s_dma_flags = 0;
 volatile uint32_t i2s_enco_bp_flags = 0;
 static const char blank_line[] = "                ";
-
+uint8_t menu_index = 0;
 /* USER CODE END PV */
 
 /* Private function prototypes -----------------------------------------------*/
@@ -704,12 +704,15 @@ void StartReadEncTask(void *argument)
 				osEventFlagsSet(WaitNewValHandle, I2S_ENCO_MENU_FLAG);
 				break;
 			case 1:
-				GainValue += delta;
-				if (GainValue < AUDIO_GAIN_MIN) {
-					GainValue = AUDIO_GAIN_MIN;
-				}
-				else if(GainValue > AUDIO_GAIN_MAX){
-					GainValue = AUDIO_GAIN_MAX;
+				if(menu_index == 0U)
+				{
+					GainValue += delta;
+					if (GainValue < AUDIO_GAIN_MIN) {
+						GainValue = AUDIO_GAIN_MIN;
+					}
+					else if(GainValue > AUDIO_GAIN_MAX){
+						GainValue = AUDIO_GAIN_MAX;
+					}
 				}
 				osEventFlagsSet(WaitNewValHandle, I2S_ENCO_SUB_MENU_FLAG);
 				break;
@@ -777,7 +780,7 @@ void StartDisplayTask(void *argument)
   /* USER CODE BEGIN StartDisplayTask */
 
 	__HAL_TIM_SET_COUNTER(&htim1,0);
-	uint8_t menu_index = 0;
+
 	uint32_t flags;
 	char buffer[32] = " ";
   lcd_clear();

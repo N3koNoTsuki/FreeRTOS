@@ -54,9 +54,8 @@ volatile uint32_t i2s_enco_bp_flags = 0;
 
 #if defined(CMSIS_Filtering)
 float32_t biquadCoeffs[5];
-q15_t biquadCoeffsQ15[5];
-q15_t biquadState[4 * NUM_STAGES];
-arm_biquad_casd_df1_inst_q15 biquad;
+float32_t biquadState[2 * NUM_STAGES];
+arm_biquad_cascade_df2T_instance_f32 biquad;
 #elif defined(USER_DF2T)
 float32_t biquadCoeffs[5];
 float32_t biquadState[2 * NUM_STAGES];
@@ -156,15 +155,14 @@ int main(void)
 	printf("CMSIS filtering mode\r\n");
 #endif
 #if defined(USER_DF2T) || defined(CMSIS_Filtering) || defined(USER_DF1)
-	Param_Biq_filter_2nd_Order_Low_pass(1000, 44000, biquadCoeffs);
+	Param_Biq_filter_2nd_Order_Low_pass(500, 44000, biquadCoeffs);
 	printf("Biquad Coefficients:\r\n • b0=%f\r\n • b1=%f\r\n • b2=%f\r\n • a1=%f\r\n • a2=%f\r\n",
 		   biquadCoeffs[0], biquadCoeffs[1], biquadCoeffs[2],biquadCoeffs[3], biquadCoeffs[4]);
 #if defined(CMSIS_Filtering)
-	for (uint32_t i = 0; i < (4 * NUM_STAGES); i++){
-		biquadState[i] = 0;
+	for (uint32_t i = 0; i < (2 * NUM_STAGES); i++){
+		biquadState[i] = 0.0f;
 	}
-	arm_float_to_q15(biquadCoeffs, biquadCoeffsQ15, 5U);
-	arm_biquad_cascade_df1_init_q15(&biquad, NUM_STAGES, biquadCoeffsQ15, biquadState, 1);
+	arm_biquad_cascade_df2T_init_f32(&biquad, NUM_STAGES, biquadCoeffs, biquadState);
 #elif defined(USER_DF2T)
 	for (uint32_t i = 0; i < (2 * NUM_STAGES); i++){
 	  biquadState[i] = 0.0f;

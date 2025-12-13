@@ -5,10 +5,12 @@
     2025-9-12
 */
 
-
 #include "NekoNoLib.h"
+#include <math.h>
+#include <string.h>
 
-
+#define GAIN_SHIFT_MAX 15
+#define GAIN_SHIFT_MIN (-15)
 
 static const char* const kMenuTexts[MENU_COUNT] = {
 	"Menu 1/3 Vol",
@@ -16,8 +18,16 @@ static const char* const kMenuTexts[MENU_COUNT] = {
 	"Menu 3/3 N/A",
 };
 
-
-#include <math.h>
+static inline int16_t clamp_int16(int32_t value, int16_t min, int16_t max)
+{
+	if (value < min) {
+		return min;
+	}
+	if (value > max) {
+		return max;
+	}
+	return (int16_t)value;
+}
 
 /**
   * @brief  Return current menu to be display
@@ -25,20 +35,20 @@ static const char* const kMenuTexts[MENU_COUNT] = {
   * 		_Buf	Buffer where the text going to be saved to be display
   * @retval Return current id or -1 in case of issue
   */
-size_t MenuDisplay(uint8_t _Id, char* _Buf, size_t _lenghtBuf){
+size_t MenuDisplay(uint8_t _Id, char* _Buf, size_t _lenghtBuf)
+{
 
 	if ((_Buf == NULL) || (_lenghtBuf == 0U)) {
+		return (size_t)-1;
+	}
+
+	if (_Id >= MENU_COUNT) {
 		snprintf(_Buf, _lenghtBuf, "ErrorM   : N/A");
 		return (size_t)-1;
 	}
 
-	size_t Rtv = (size_t)-1;
-
-	if (_Id < MENU_COUNT) {
-		Rtv = _Id;
-		snprintf(_Buf, _lenghtBuf, "%s", kMenuTexts[_Id]);
-	}
-	return Rtv;
+	snprintf(_Buf, _lenghtBuf, "%s", kMenuTexts[_Id]);
+	return (size_t)_Id;
 }
 
 /**
@@ -48,39 +58,30 @@ size_t MenuDisplay(uint8_t _Id, char* _Buf, size_t _lenghtBuf){
   * 		_Buf	  Buffer where the text is saved for display
   * @retval Return current id or -1 in case of issue
   */
-size_t SubMenuDisplay(uint8_t _Id_ROW, int16_t _Value, char* _Buf, size_t _lenghtBuf){
+size_t SubMenuDisplay(uint8_t _Id_ROW, int16_t _Value, char* _Buf, size_t _lenghtBuf)
+{
 
 	if ((_Buf == NULL) || (_lenghtBuf == 0U)) {
 		return (size_t)-1;
 	}
 
-	size_t Rtv = (size_t)-1;
-
 	if(_Id_ROW == 0U){
-		Rtv = 0;
-		int16_t clamped = _Value;
-		if (clamped > 256) {
-			clamped = 256;
-		}
-		else if (clamped < -256) {
-			clamped = -256;
-		}
-		snprintf(_Buf,_lenghtBuf,"Volume : %+d", (int)clamped);
+		const int16_t clamped = clamp_int16(_Value, -256, 256);
+		snprintf(_Buf, _lenghtBuf, "Volume : %+d", (int)clamped);
+		return 0;
 	}
-	else if(_Id_ROW == 1U){
-		Rtv = 1;
-		snprintf(_Buf,_lenghtBuf,"Submenu : %i", (int)_Value);
+	else if(_Id_ROW == 1U) {
+		snprintf(_Buf, _lenghtBuf, "Submenu : %i", (int)_Value);
+		return 1;
 	}
 	else if(_Id_ROW == 2U){
-		Rtv = 2;
-		snprintf(_Buf,_lenghtBuf,"Info    : %d", (int)_Value);
+		snprintf(_Buf, _lenghtBuf, "Info    : %d", (int)_Value);
+		return 2;
 	}
 	else{
-		Rtv = (size_t)-1;
-		snprintf(_Buf,_lenghtBuf,"ErrorSb   : N/A");
+		snprintf(_Buf, _lenghtBuf, "ErrorSb   : N/A");
+		return (size_t)-1;
 	}
-
-	return Rtv;
 }
 
 /**
@@ -99,7 +100,7 @@ int8_t ClampMenuIndex(int32_t _Value, int32_t _Max, int32_t _Min)
 	if (clamped_value <= min_idx) {
 		clamped_value = min_idx;
 	}
-	if (clamped_value >= max_idx) {
+	else if (clamped_value >= max_idx) {
 		clamped_value = max_idx;
 	}
 	return (int8_t)clamped_value;
@@ -116,21 +117,31 @@ int8_t ClampMenuIndex(int32_t _Value, int32_t _Max, int32_t _Min)
   */
 void ApplyGain(const int16_t *_Src, int16_t *_Dis, uint32_t _Size, int32_t _Gain)
 {
+	if ((_Src == NULL) || (_Dis == NULL) || (_Size == 0U)) {
+		return;
+	}
+
+	int32_t gain = _Gain;
+	if (gain > GAIN_SHIFT_MAX) {
+		gain = GAIN_SHIFT_MAX;
+	} else if (gain < GAIN_SHIFT_MIN) {
+		gain = GAIN_SHIFT_MIN;
+	}
+
+	if (gain == 0) {
+		memcpy(_Dis, _Src, _Size * sizeof(int16_t));
+		return;
+	}
+
 	for (uint32_t i = 0; i < _Size; i++) {
 		int32_t Sample = _Src[i];
-		if (_Gain >= 0) {
-			Sample <<= _Gain;
+		if (gain >= 0) {
+			Sample <<= gain;
 		} else {
-			Sample >>= (-_Gain);
+			Sample >>= (-gain);
 		}
 
-		if (Sample > INT16_MAX){
-			Sample = INT16_MAX;
-		}
-		else if (Sample < INT16_MIN){
-			Sample = INT16_MIN;
-		}
-		_Dis[i] = (int16_t)Sample;
+		_Dis[i] = clamp_int16(Sample, INT16_MIN, INT16_MAX);
 	}
 }
 
@@ -143,9 +154,10 @@ void ApplyGain(const int16_t *_Src, int16_t *_Dis, uint32_t _Size, int32_t _Gain
   * 		_Buf	Buffer where the a and b parameters are saved
   * @retval Return current id or -1 in case of issue
   */
-void Param_Biq_filter_2nd_Order_Low_pass(uint16_t _Fc, uint16_t _Fs, float32_t* _Buf){
+void Param_Biq_filter_2nd_Order_Low_pass(uint16_t _Fc, uint16_t _Fs, float32_t* _Buf)
+{
 
-	if (_Buf == NULL) {
+	if ((_Buf == NULL) || (_Fs == 0U)) {
 		return;
 	}
 
@@ -252,7 +264,7 @@ size_t Apply_Biquad_Filter_DF2T(const int16_t* _Src, int16_t* _Dst, uint32_t _Si
         const float y = b0 * x + w1;
         w1 = b1 * x - a1 * y + w2;
         w2 = b2 * x - a2 * y;
-        _Dst[n] = y;
+        _Dst[n] = clamp_int16((int32_t)lroundf(y), INT16_MIN, INT16_MAX);
     }
 
     _State[0] = w1;

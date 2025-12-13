@@ -1,6 +1,8 @@
-../Core/Src/freertos.c:100:23:EncoderSteps	1
-../Core/Src/freertos.c:120:6:MX_FREERTOS_Init	1
-../Core/Src/freertos.c:179:6:StartDefaultTask	1
-../Core/Src/freertos.c:197:6:StartReadEncTask	8
-../Core/Src/freertos.c:250:6:StartAudioTask	5
-../Core/Src/freertos.c:312:6:StartDisplayTask	5
+../Core/Src/freertos.c:104:23:EncoderSteps	1
+../Core/Src/freertos.c:111:23:clamp_int32	3
+../Core/Src/freertos.c:122:13:ProcessAudioChunk	3
+../Core/Src/freertos.c:160:6:MX_FREERTOS_Init	1
+../Core/Src/freertos.c:219:6:StartDefaultTask	1
+../Core/Src/freertos.c:237:6:StartReadEncTask	6
+../Core/Src/freertos.c:284:6:StartAudioTask	5
+../Core/Src/freertos.c:321:6:StartDisplayTask	5

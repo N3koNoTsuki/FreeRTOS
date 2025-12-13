@@ -52,7 +52,6 @@ extern "C" {
 extern volatile uint32_t i2s_dma_flags;
 extern volatile uint32_t i2s_enco_bp_flags;
 extern osSemaphoreId_t AudioSemHandle;
-extern float32_t biquadCoeffs[];
 
 
 /* USER CODE END EC */
@@ -94,9 +93,8 @@ void Error_Handler(void);
 //#define DIRECT_COPY
 //#define AmplifyOnly
 //#define USER_DF2T
-#define USER_DF1
-//#define CMSIS_Filtering
-
+//#define USER_DF1
+#define CMSIS_Filtering
 
 #define I2S_HALF_BUFFER_SIZE 256U
 #define I2S_BUFFER_SIZE (I2S_HALF_BUFFER_SIZE*2)
@@ -108,22 +106,21 @@ void Error_Handler(void);
 #define I2S_ENCO_MENU_FLAG 		 (1U << 1)
 #define AUDIO_GAIN_MIN   (-3)
 #define AUDIO_GAIN_MAX   (3)
+#define BIQUAD_POSTSHIFT 0U
 #if defined(CMSIS_Filtering) || defined(USER_DF2T) || defined(USER_DF1)
 #define NUM_STAGES 1U
 #endif
 
-#if defined(CMSIS_Filtering)
-extern q15_t biquadCoeffsQ15[];
-#endif
 extern float32_t biquadCoeffs[];
-#if defined(USER_DF1) || defined(CMSIS_Filtering)
+#if defined(USER_DF1)
 extern q15_t biquadState[];
 #else
 extern float32_t biquadState[];
 #endif
 #ifdef CMSIS_Filtering
-extern arm_biquad_casd_df1_inst_q15 biquad;
+extern arm_biquad_cascade_df2T_instance_f32 biquad;
 #endif
+
 /* USER CODE END Private defines */
 
 #ifdef __cplusplus

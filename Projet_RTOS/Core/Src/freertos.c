@@ -22,6 +22,7 @@
 #include "task.h"
 #include "main.h"
 #include "cmsis_os.h"
+#include <math.h>
 
 /* Private includes ----------------------------------------------------------*/
 /* USER CODE BEGIN Includes */
@@ -53,6 +54,8 @@ static int16_t i2s3_buffer[I2S_BUFFER_SIZE];
 static int16_t i2s2_buffer[I2S_BUFFER_SIZE];
 
 int32_t GainValue = 0;
+
+
 
 
 /* USER CODE END Variables */
@@ -97,11 +100,48 @@ const osEventFlagsAttr_t WaitNewVal_attributes = {
 
 /* Private function prototypes -----------------------------------------------*/
 /* USER CODE BEGIN FunctionPrototypes */
+
 static inline int16_t EncoderSteps(void)
 {
 	// Convert 0-65535 to -32768 to +32767
 	int16_t Val = (int16_t)__HAL_TIM_GET_COUNTER(&htim1)>>1;
     return Val;
+}
+
+static inline int32_t clamp_int32(int32_t value, int32_t min, int32_t max)
+{
+	if (value < min) {
+		return min;
+	}
+	if (value > max) {
+		return max;
+	}
+	return value;
+}
+
+static void ProcessAudioChunk(int16_t *src, int16_t *dst)
+{
+#ifdef CMSIS_Filtering
+	static float32_t buf_in[I2S_HALF_BUFFER_SIZE];
+	static float32_t buf_out[I2S_HALF_BUFFER_SIZE];
+	for (uint32_t i = 0; i < I2S_HALF_BUFFER_SIZE; i++) {
+		buf_in[i] = (float32_t)src[i];
+	}
+	arm_biquad_cascade_df2T_f32(&biquad, buf_in, buf_out, I2S_HALF_BUFFER_SIZE);
+	for (uint32_t i = 0; i < I2S_HALF_BUFFER_SIZE; i++) {
+		dst[i] = (int16_t)clamp_int32((int32_t)lroundf(buf_out[i]), INT16_MIN, INT16_MAX);
+	}
+#elif defined(DIRECT_COPY)
+	memcpy(dst, src, I2S_HALF_BUFFER_SIZE * sizeof(int16_t));
+#elif defined(AmplifyOnly)
+	ApplyGain(src, dst, I2S_HALF_BUFFER_SIZE, GainValue);
+#elif defined(USER_DF2T)
+	Apply_Biquad_Filter_DF2T(src, dst, I2S_HALF_BUFFER_SIZE, biquadCoeffs, biquadState);
+#elif defined(USER_DF1)
+	Apply_Biquad_Filter_DF1(src, dst, I2S_HALF_BUFFER_SIZE,
+						   biquadCoeffs,
+						   biquadState);
+#endif
 }
 /* USER CODE END FunctionPrototypes */
 
@@ -213,17 +253,11 @@ void StartReadEncTask(void *argument)
 		  delta = (int16_t)(CMPT - CMPT_OLD);
 		  if (delta != 0) {
 			  if(i2s_enco_bp_flags == 1U){
-					if(menu_index == 0U)
-					{
-						GainValue += delta;
-						if (GainValue < AUDIO_GAIN_MIN) {
-							GainValue = AUDIO_GAIN_MIN;
-						}
-						else if(GainValue > AUDIO_GAIN_MAX){
-							GainValue = AUDIO_GAIN_MAX;
-						}
-					}
-					osEventFlagsSet(WaitNewValHandle, I2S_ENCO_SUB_MENU_FLAG);
+				  if(menu_index == 0U)
+				  {
+					  GainValue = (int32_t)clamp_int32(GainValue + delta, AUDIO_GAIN_MIN, AUDIO_GAIN_MAX);
+				  }
+				  osEventFlagsSet(WaitNewValHandle, I2S_ENCO_SUB_MENU_FLAG);
 			  }
 			  else if(i2s_enco_bp_flags == 0U){
 				  //Menu navigation
@@ -259,44 +293,19 @@ void StartAudioTask(void *argument)
 	        printf("ERR: I2S2 TX DMA\n");
 	        Error_Handler();
 	    }
-	    for (;;)
+		for (;;)
 	    {
 			osSemaphoreAcquire(AudioSemHandle, osWaitForever);
 			if (i2s_dma_flags & I2S_DMA_FLAG_HALF)
 			{
 				i2s_dma_flags &= ~I2S_DMA_FLAG_HALF;
-				#ifdef DIRECT_COPY
-				memcpy(i2s2_buffer, i2s3_buffer, I2S_HALF_BUFFER_SIZE * sizeof(int16_t));
-				#elif defined(AmplifyOnly)
-				ApplyGain(i2s3_buffer, i2s2_buffer, I2S_HALF_BUFFER_SIZE, GainValue);
-				#elif defined(USER_DF2T)
-				Apply_Biquad_Filter_DF2T(i2s3_buffer, i2s2_buffer, I2S_HALF_BUFFER_SIZE, biquadCoeffs, biquadState);
-				#elif defined(USER_DF1)
-				Apply_Biquad_Filter_DF1(i2s3_buffer, i2s2_buffer, I2S_HALF_BUFFER_SIZE,
-									   biquadCoeffs,
-									   biquadState);
-				#elif defined(CMSIS_Filtering)
-				arm_biquad_cascade_df1_q15(&biquad, (q15_t*)i2s3_buffer, (q15_t*)i2s2_buffer, I2S_HALF_BUFFER_SIZE);
-				#endif
+				ProcessAudioChunk(i2s3_buffer, i2s2_buffer);
 			}
 
 			if (i2s_dma_flags & I2S_DMA_FLAG_FULL)
 			{
 				i2s_dma_flags &= ~I2S_DMA_FLAG_FULL;
-				#ifdef DIRECT_COPY
-				memcpy(&i2s2_buffer[I2S_HALF_BUFFER_SIZE], &i2s3_buffer[I2S_HALF_BUFFER_SIZE], I2S_HALF_BUFFER_SIZE * sizeof(int16_t));
-				#elif defined(AmplifyOnly)
-				ApplyGain(&i2s3_buffer[I2S_HALF_BUFFER_SIZE], &i2s2_buffer[I2S_HALF_BUFFER_SIZE], I2S_HALF_BUFFER_SIZE, GainValue);
-				#elif defined(USER_DF2T)
-				Apply_Biquad_Filter_DF2T(&i2s3_buffer[I2S_HALF_BUFFER_SIZE], &i2s2_buffer[I2S_HALF_BUFFER_SIZE], I2S_HALF_BUFFER_SIZE,
-										 biquadCoeffs, biquadState);
-				#elif defined(USER_DF1)
-				Apply_Biquad_Filter_DF1(&i2s3_buffer[I2S_HALF_BUFFER_SIZE], &i2s2_buffer[I2S_HALF_BUFFER_SIZE], I2S_HALF_BUFFER_SIZE,
-									   biquadCoeffs,
-									   &biquadState[0]);
-				#elif defined(CMSIS_Filtering)
-				arm_biquad_cascade_df1_q15(&biquad, (q15_t*)&i2s3_buffer[I2S_HALF_BUFFER_SIZE], (q15_t*)&i2s2_buffer[I2S_HALF_BUFFER_SIZE], I2S_HALF_BUFFER_SIZE);
-				#endif
+				ProcessAudioChunk(&i2s3_buffer[I2S_HALF_BUFFER_SIZE], &i2s2_buffer[I2S_HALF_BUFFER_SIZE]);
 			}
 	    }
   /* USER CODE END StartAudioTask */
@@ -330,7 +339,7 @@ void StartDisplayTask(void *argument)
 	{
 		flags = osEventFlagsWait(WaitNewValHandle, I2S_ENCO_SUB_MENU_FLAG | I2S_ENCO_MENU_FLAG, osFlagsWaitAny, osWaitForever);
 
-		if(flags == I2S_ENCO_MENU_FLAG){
+		if(flags & I2S_ENCO_MENU_FLAG){
 			menu_index = ClampMenuIndex((int32_t)menu_index + (int32_t)delta, MENU_COUNT - 1, 0);
 			printf("Delta: %d\r\n", delta);
 			printf("Menu index: %d\r\n", menu_index);
@@ -348,7 +357,7 @@ void StartDisplayTask(void *argument)
 			lcd_write(buffer);
 		}
 
-		else if (flags == I2S_ENCO_SUB_MENU_FLAG) {
+		if (flags & I2S_ENCO_SUB_MENU_FLAG) {
 
 			sub_menu_index = ClampMenuIndex((int32_t)sub_menu_index + (int32_t)delta, 4, 0);
 			lcd_put_cursor(1, 0);
@@ -360,11 +369,6 @@ void StartDisplayTask(void *argument)
 				SubMenuDisplay(menu_index, sub_menu_index, buffer, sizeof(buffer));
 			}
 			lcd_write(buffer);
-		}
-
-		else{
-			lcd_clear();
-			lcd_write("C kc");
 		}
 	}
   /* USER CODE END StartDisplayTask */

@@ -49,16 +49,8 @@ int8_t menu_index = 0;
 int8_t sub_menu_index = 0;
 int16_t delta = 0;
 
-#if  defined(USER_DF2T)
-static float32_t i2s3_buffer[I2S_BUFFER_SIZE];
-static float32_t i2s2_buffer[I2S_BUFFER_SIZE];
-#elif defined(USER_DF1) || defined(CMSIS_Filtering)
-static q15_t i2s3_buffer[I2S_BUFFER_SIZE];
-static q15_t i2s2_buffer[I2S_BUFFER_SIZE];
-#else
 static int16_t i2s3_buffer[I2S_BUFFER_SIZE];
 static int16_t i2s2_buffer[I2S_BUFFER_SIZE];
-#endif
 
 int32_t GainValue = 0;
 
@@ -279,14 +271,12 @@ void StartAudioTask(void *argument)
 				ApplyGain(i2s3_buffer, i2s2_buffer, I2S_HALF_BUFFER_SIZE, GainValue);
 				#elif defined(USER_DF2T)
 				Apply_Biquad_Filter_DF2T(i2s3_buffer, i2s2_buffer, I2S_HALF_BUFFER_SIZE, biquadCoeffs, biquadState);
-				printf("i2s2_buffer[0]: %lf\r\n", i2s2_buffer[50]);
-				printf("i2s3_buffer[0]: %i\r\n", (uint16_t)i2s2_buffer[50]);
 				#elif defined(USER_DF1)
-				Aply_Biquad_Filter_DF1(&i2s3_buffer[0], &i2s2_buffer[0], I2S_HALF_BUFFER_SIZE,
+				Apply_Biquad_Filter_DF1(i2s3_buffer, i2s2_buffer, I2S_HALF_BUFFER_SIZE,
 									   biquadCoeffs,
-									   &biquadState[0]);
+									   biquadState);
 				#elif defined(CMSIS_Filtering)
-				arm_biquad_cascade_df2T_f32(&biquad, i2s3_buffer, i2s2_buffer, I2S_HALF_BUFFER_SIZE);
+				arm_biquad_cascade_df1_q15(&biquad, (q15_t*)i2s3_buffer, (q15_t*)i2s2_buffer, I2S_HALF_BUFFER_SIZE);
 				#endif
 			}
 
@@ -301,11 +291,11 @@ void StartAudioTask(void *argument)
 				Apply_Biquad_Filter_DF2T(&i2s3_buffer[I2S_HALF_BUFFER_SIZE], &i2s2_buffer[I2S_HALF_BUFFER_SIZE], I2S_HALF_BUFFER_SIZE,
 										 biquadCoeffs, biquadState);
 				#elif defined(USER_DF1)
-				Aply_Biquad_Filter_DF1(&i2s3_buffer[I2S_HALF_BUFFER_SIZE], &i2s2_buffer[I2S_HALF_BUFFER_SIZE], I2S_HALF_BUFFER_SIZE,
+				Apply_Biquad_Filter_DF1(&i2s3_buffer[I2S_HALF_BUFFER_SIZE], &i2s2_buffer[I2S_HALF_BUFFER_SIZE], I2S_HALF_BUFFER_SIZE,
 									   biquadCoeffs,
 									   &biquadState[0]);
 				#elif defined(CMSIS_Filtering)
-				arm_biquad_cascade_df2T_f32(&biquad, &i2s3_buffer[I2S_HALF_BUFFER_SIZE], &i2s2_buffer[I2S_HALF_BUFFER_SIZE], I2S_HALF_BUFFER_SIZE);
+				arm_biquad_cascade_df1_q15(&biquad, (q15_t*)&i2s3_buffer[I2S_HALF_BUFFER_SIZE], (q15_t*)&i2s2_buffer[I2S_HALF_BUFFER_SIZE], I2S_HALF_BUFFER_SIZE);
 				#endif
 			}
 	    }

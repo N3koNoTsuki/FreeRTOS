@@ -184,7 +184,6 @@ size_t Apply_Biquad_Filter_DF1(const q15_t* _Src, q15_t* _Dst, uint32_t _Size, c
 		return (size_t)-1;
 	}
 
-	/* Convert float coefficients to Q15 once per block */
 	q15_t coeffs_q15[5];
 	arm_float_to_q15(_Coeffs, coeffs_q15, 5U);
 

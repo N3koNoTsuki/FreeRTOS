@@ -26,6 +26,8 @@ Core/Src \
 Core/Startup \
 Core/user_Lib/MYLIBRARY/src \
 Core/user_Lib/NekoNoLib/src \
+Drivers/CMSIS_DSP/Source/FilteringFunctions \
+Drivers/CMSIS_DSP/Source/SupportFunctions \
 Drivers/STM32F4xx_HAL_Driver/Src \
 Middlewares/Third_Party/FreeRTOS/Source/CMSIS_RTOS_V2 \
 Middlewares/Third_Party/FreeRTOS/Source \

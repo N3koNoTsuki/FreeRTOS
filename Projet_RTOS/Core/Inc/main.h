@@ -112,13 +112,17 @@ void Error_Handler(void);
 #define NUM_STAGES 1U
 #endif
 
-#if defined(USER_DF1)
+#if defined(CMSIS_Filtering)
+extern q15_t biquadCoeffsQ15[];
+#endif
+extern float32_t biquadCoeffs[];
+#if defined(USER_DF1) || defined(CMSIS_Filtering)
 extern q15_t biquadState[];
 #else
 extern float32_t biquadState[];
 #endif
 #ifdef CMSIS_Filtering
-extern arm_biquad_cascade_df2T_instance_f32 biquad;
+extern arm_biquad_casd_df1_inst_q15 biquad;
 #endif
 /* USER CODE END Private defines */
 

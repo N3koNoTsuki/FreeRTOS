@@ -14,6 +14,8 @@ RM := rm -rf
 -include Middlewares/Third_Party/FreeRTOS/Source/CMSIS_RTOS_V2/subdir.mk
 -include Middlewares/Third_Party/FreeRTOS/Source/subdir.mk
 -include Drivers/STM32F4xx_HAL_Driver/Src/subdir.mk
+-include Drivers/CMSIS_DSP/Source/SupportFunctions/subdir.mk
+-include Drivers/CMSIS_DSP/Source/FilteringFunctions/subdir.mk
 -include Core/user_Lib/NekoNoLib/src/subdir.mk
 -include Core/user_Lib/MYLIBRARY/src/subdir.mk
 -include Core/Startup/subdir.mk
@@ -67,7 +69,7 @@ main-build: Projet_RTOS.elf secondary-outputs
 
 # Tool invocations
 Projet_RTOS.elf Projet_RTOS.map: $(OBJS) $(USER_OBJS) /home/nekonotsuki/STM32CubeIDE/workspace_1.19.0/FreeRTOS/Projet_RTOS/STM32F446RETX_FLASH.ld makefile objects.list $(OPTIONAL_TOOL_DEPS)
-	arm-none-eabi-gcc -o "Projet_RTOS.elf" @"objects.list" $(USER_OBJS) $(LIBS) -mcpu=cortex-m4 -T"/home/nekonotsuki/STM32CubeIDE/workspace_1.19.0/FreeRTOS/Projet_RTOS/STM32F446RETX_FLASH.ld" --specs=nosys.specs -Wl,-Map="Projet_RTOS.map" -Wl,--gc-sections -static --specs=nano.specs -mfpu=fpv4-sp-d16 -mfloat-abi=hard -mthumb -Wl,--start-group -lc -lm -Wl,--end-group
+	arm-none-eabi-gcc -o "Projet_RTOS.elf" @"objects.list" $(USER_OBJS) $(LIBS) -mcpu=cortex-m4 -T"/home/nekonotsuki/STM32CubeIDE/workspace_1.19.0/FreeRTOS/Projet_RTOS/STM32F446RETX_FLASH.ld" --specs=nosys.specs -Wl,-Map="Projet_RTOS.map" -Wl,--gc-sections -static --specs=nano.specs -mfpu=fpv4-sp-d16 -mfloat-abi=hard -mthumb -u _printf_float -Wl,--start-group -lc -lm -Wl,--end-group
 	@echo 'Finished building target: $@'
 	@echo ' '
 

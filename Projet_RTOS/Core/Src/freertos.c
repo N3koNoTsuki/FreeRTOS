@@ -21,6 +21,7 @@
 #include "FreeRTOS.h"
 #include "task.h"
 #include "main.h"
+#include "cmsis_os.h"
 
 /* Private includes ----------------------------------------------------------*/
 /* USER CODE BEGIN Includes */
@@ -44,13 +45,340 @@
 
 /* Private variables ---------------------------------------------------------*/
 /* USER CODE BEGIN Variables */
+int8_t menu_index = 0;
+int8_t sub_menu_index = 0;
+int16_t delta = 0;
+
+#if  defined(USER_DF2T)
+static float32_t i2s3_buffer[I2S_BUFFER_SIZE];
+static float32_t i2s2_buffer[I2S_BUFFER_SIZE];
+#elif defined(USER_DF1) || defined(CMSIS_Filtering)
+static q15_t i2s3_buffer[I2S_BUFFER_SIZE];
+static q15_t i2s2_buffer[I2S_BUFFER_SIZE];
+#else
+static int16_t i2s3_buffer[I2S_BUFFER_SIZE];
+static int16_t i2s2_buffer[I2S_BUFFER_SIZE];
+#endif
+
+int32_t GainValue = 0;
+
 
 /* USER CODE END Variables */
+/* Definitions for defaultTask */
+osThreadId_t defaultTaskHandle;
+const osThreadAttr_t defaultTask_attributes = {
+  .name = "defaultTask",
+  .stack_size = 128 * 4,
+  .priority = (osPriority_t) osPriorityNormal,
+};
+/* Definitions for ReadEncTask */
+osThreadId_t ReadEncTaskHandle;
+const osThreadAttr_t ReadEncTask_attributes = {
+  .name = "ReadEncTask",
+  .stack_size = 128 * 4,
+  .priority = (osPriority_t) osPriorityNormal1,
+};
+/* Definitions for AudioTask */
+osThreadId_t AudioTaskHandle;
+const osThreadAttr_t AudioTask_attributes = {
+  .name = "AudioTask",
+  .stack_size = 128 * 4,
+  .priority = (osPriority_t) osPriorityAboveNormal,
+};
+/* Definitions for DisplayTask */
+osThreadId_t DisplayTaskHandle;
+const osThreadAttr_t DisplayTask_attributes = {
+  .name = "DisplayTask",
+  .stack_size = 128 * 4,
+  .priority = (osPriority_t) osPriorityNormal1,
+};
+/* Definitions for AudioSem */
+osSemaphoreId_t AudioSemHandle;
+const osSemaphoreAttr_t AudioSem_attributes = {
+  .name = "AudioSem"
+};
+/* Definitions for WaitNewVal */
+osEventFlagsId_t WaitNewValHandle;
+const osEventFlagsAttr_t WaitNewVal_attributes = {
+  .name = "WaitNewVal"
+};
 
 /* Private function prototypes -----------------------------------------------*/
 /* USER CODE BEGIN FunctionPrototypes */
-
+static inline int16_t EncoderSteps(void)
+{
+	// Convert 0-65535 to -32768 to +32767
+	int16_t Val = (int16_t)__HAL_TIM_GET_COUNTER(&htim1)>>1;
+    return Val;
+}
 /* USER CODE END FunctionPrototypes */
+
+void StartDefaultTask(void *argument);
+void StartReadEncTask(void *argument);
+void StartAudioTask(void *argument);
+void StartDisplayTask(void *argument);
+
+void MX_FREERTOS_Init(void); /* (MISRA C 2004 rule 8.1) */
+
+/**
+  * @brief  FreeRTOS initialization
+  * @param  None
+  * @retval None
+  */
+void MX_FREERTOS_Init(void) {
+  /* USER CODE BEGIN Init */
+
+  /* USER CODE END Init */
+
+  /* USER CODE BEGIN RTOS_MUTEX */
+  /* add mutexes, ... */
+  /* USER CODE END RTOS_MUTEX */
+
+  /* Create the semaphores(s) */
+  /* creation of AudioSem */
+  AudioSemHandle = osSemaphoreNew(1, 1, &AudioSem_attributes);
+
+  /* USER CODE BEGIN RTOS_SEMAPHORES */
+  /* add semaphores, ... */
+  /* USER CODE END RTOS_SEMAPHORES */
+
+  /* USER CODE BEGIN RTOS_TIMERS */
+  /* start timers, add new ones, ... */
+  /* USER CODE END RTOS_TIMERS */
+
+  /* USER CODE BEGIN RTOS_QUEUES */
+  /* add queues, ... */
+  /* USER CODE END RTOS_QUEUES */
+
+  /* Create the thread(s) */
+  /* creation of defaultTask */
+  defaultTaskHandle = osThreadNew(StartDefaultTask, NULL, &defaultTask_attributes);
+
+  /* creation of ReadEncTask */
+  ReadEncTaskHandle = osThreadNew(StartReadEncTask, NULL, &ReadEncTask_attributes);
+
+  /* creation of AudioTask */
+  AudioTaskHandle = osThreadNew(StartAudioTask, NULL, &AudioTask_attributes);
+
+  /* creation of DisplayTask */
+  DisplayTaskHandle = osThreadNew(StartDisplayTask, NULL, &DisplayTask_attributes);
+
+  /* USER CODE BEGIN RTOS_THREADS */
+  /* add threads, ... */
+  /* USER CODE END RTOS_THREADS */
+
+  /* Create the event(s) */
+  /* creation of WaitNewVal */
+  WaitNewValHandle = osEventFlagsNew(&WaitNewVal_attributes);
+
+  /* USER CODE BEGIN RTOS_EVENTS */
+  /* add events, ... */
+  /* USER CODE END RTOS_EVENTS */
+
+}
+
+/* USER CODE BEGIN Header_StartDefaultTask */
+/**
+  * @brief  Function implementing the defaultTask thread.
+  * @param  argument: Not used
+  * @retval None
+  */
+/* USER CODE END Header_StartDefaultTask */
+void StartDefaultTask(void *argument)
+{
+  /* USER CODE BEGIN StartDefaultTask */
+  /* Infinite loop */
+  for(;;)
+  {
+    osDelay(1);
+  }
+  /* USER CODE END StartDefaultTask */
+}
+
+/* USER CODE BEGIN Header_StartReadEncTask */
+/**
+* @brief Function implementing the ReadEncTask thread.
+* @param argument: Not used
+* @retval None
+*/
+/* USER CODE END Header_StartReadEncTask */
+void StartReadEncTask(void *argument)
+{
+  /* USER CODE BEGIN StartReadEncTask */
+	int16_t CMPT = 0;
+		int16_t CMPT_OLD;
+		CMPT_OLD = CMPT;
+		uint32_t last_mode = i2s_enco_bp_flags;
+	  /* Infinite loop */
+		for(;;)
+		{
+		  if (i2s_enco_bp_flags != last_mode) {
+			  CMPT_OLD = EncoderSteps();
+			  last_mode = i2s_enco_bp_flags;
+		  }
+
+		  CMPT = EncoderSteps();
+		  delta = (int16_t)(CMPT - CMPT_OLD);
+		  if (delta != 0) {
+			  if(i2s_enco_bp_flags == 1U){
+					if(menu_index == 0U)
+					{
+						GainValue += delta;
+						if (GainValue < AUDIO_GAIN_MIN) {
+							GainValue = AUDIO_GAIN_MIN;
+						}
+						else if(GainValue > AUDIO_GAIN_MAX){
+							GainValue = AUDIO_GAIN_MAX;
+						}
+					}
+					osEventFlagsSet(WaitNewValHandle, I2S_ENCO_SUB_MENU_FLAG);
+			  }
+			  else if(i2s_enco_bp_flags == 0U){
+				  //Menu navigation
+					osEventFlagsSet(WaitNewValHandle, I2S_ENCO_MENU_FLAG);
+			  }
+			  else{
+				  //Should not happen
+			  }
+			  CMPT_OLD = CMPT;
+		  }
+
+		osThreadYield();
+		}
+  /* USER CODE END StartReadEncTask */
+}
+
+/* USER CODE BEGIN Header_StartAudioTask */
+/**
+* @brief Function implementing the AudioTask thread.
+* @param argument: Not used
+* @retval None
+*/
+/* USER CODE END Header_StartAudioTask */
+void StartAudioTask(void *argument)
+{
+	 if (HAL_I2S_Transmit_DMA(&hi2s3, (uint16_t*)i2s2_buffer, I2S_BUFFER_SIZE) != HAL_OK)
+	    {
+	        printf("ERR: I2S3 RX DMA\n");
+	        Error_Handler();
+	    }
+	    if (HAL_I2S_Receive_DMA(&hi2s2,(uint16_t*)i2s3_buffer, I2S_BUFFER_SIZE) != HAL_OK)
+	    {
+	        printf("ERR: I2S2 TX DMA\n");
+	        Error_Handler();
+	    }
+	    for (;;)
+	    {
+			osSemaphoreAcquire(AudioSemHandle, osWaitForever);
+			if (i2s_dma_flags & I2S_DMA_FLAG_HALF)
+			{
+				i2s_dma_flags &= ~I2S_DMA_FLAG_HALF;
+				#ifdef DIRECT_COPY
+				memcpy(i2s2_buffer, i2s3_buffer, I2S_HALF_BUFFER_SIZE * sizeof(int16_t));
+				#elif defined(AmplifyOnly)
+				ApplyGain(i2s3_buffer, i2s2_buffer, I2S_HALF_BUFFER_SIZE, GainValue);
+				#elif defined(USER_DF2T)
+				Apply_Biquad_Filter_DF2T(i2s3_buffer, i2s2_buffer, I2S_HALF_BUFFER_SIZE, biquadCoeffs, biquadState);
+				printf("i2s2_buffer[0]: %lf\r\n", i2s2_buffer[50]);
+				printf("i2s3_buffer[0]: %i\r\n", (uint16_t)i2s2_buffer[50]);
+				#elif defined(USER_DF1)
+				Aply_Biquad_Filter_DF1(&i2s3_buffer[0], &i2s2_buffer[0], I2S_HALF_BUFFER_SIZE,
+									   biquadCoeffs,
+									   &biquadState[0]);
+				#elif defined(CMSIS_Filtering)
+				arm_biquad_cascade_df2T_f32(&biquad, i2s3_buffer, i2s2_buffer, I2S_HALF_BUFFER_SIZE);
+				#endif
+			}
+
+			if (i2s_dma_flags & I2S_DMA_FLAG_FULL)
+			{
+				i2s_dma_flags &= ~I2S_DMA_FLAG_FULL;
+				#ifdef DIRECT_COPY
+				memcpy(&i2s2_buffer[I2S_HALF_BUFFER_SIZE], &i2s3_buffer[I2S_HALF_BUFFER_SIZE], I2S_HALF_BUFFER_SIZE * sizeof(int16_t));
+				#elif defined(AmplifyOnly)
+				ApplyGain(&i2s3_buffer[I2S_HALF_BUFFER_SIZE], &i2s2_buffer[I2S_HALF_BUFFER_SIZE], I2S_HALF_BUFFER_SIZE, GainValue);
+				#elif defined(USER_DF2T)
+				Apply_Biquad_Filter_DF2T(&i2s3_buffer[I2S_HALF_BUFFER_SIZE], &i2s2_buffer[I2S_HALF_BUFFER_SIZE], I2S_HALF_BUFFER_SIZE,
+										 biquadCoeffs, biquadState);
+				#elif defined(USER_DF1)
+				Aply_Biquad_Filter_DF1(&i2s3_buffer[I2S_HALF_BUFFER_SIZE], &i2s2_buffer[I2S_HALF_BUFFER_SIZE], I2S_HALF_BUFFER_SIZE,
+									   biquadCoeffs,
+									   &biquadState[0]);
+				#elif defined(CMSIS_Filtering)
+				arm_biquad_cascade_df2T_f32(&biquad, &i2s3_buffer[I2S_HALF_BUFFER_SIZE], &i2s2_buffer[I2S_HALF_BUFFER_SIZE], I2S_HALF_BUFFER_SIZE);
+				#endif
+			}
+	    }
+  /* USER CODE END StartAudioTask */
+}
+
+/* USER CODE BEGIN Header_StartDisplayTask */
+/**
+* @brief Function implementing the DisplayTask thread.
+* @param argument: Not used
+* @retval None
+*/
+/* USER CODE END Header_StartDisplayTask */
+void StartDisplayTask(void *argument)
+{
+  /* USER CODE BEGIN StartDisplayTask */
+
+	__HAL_TIM_SET_COUNTER(&htim1,0);
+
+	uint32_t flags;
+	char buffer[32] = " ";
+  lcd_clear();
+  menu_index = ClampMenuIndex(EncoderSteps(), MENU_COUNT - 1, 0);
+  MenuDisplay(menu_index, buffer, sizeof(buffer));
+  lcd_write(buffer);
+  lcd_put_cursor(1, 0);
+  SubMenuDisplay(menu_index, GainValue, buffer, sizeof(buffer));
+  lcd_write(buffer);
+
+	/* Infinite loop */
+	for(;;)
+	{
+		flags = osEventFlagsWait(WaitNewValHandle, I2S_ENCO_SUB_MENU_FLAG | I2S_ENCO_MENU_FLAG, osFlagsWaitAny, osWaitForever);
+
+		if(flags == I2S_ENCO_MENU_FLAG){
+			menu_index = ClampMenuIndex((int32_t)menu_index + (int32_t)delta, MENU_COUNT - 1, 0);
+			printf("Delta: %d\r\n", delta);
+			printf("Menu index: %d\r\n", menu_index);
+			lcd_clear();
+			MenuDisplay(menu_index , buffer, sizeof(buffer));
+			lcd_write(buffer);
+			lcd_put_cursor(1, 0);
+			lcd_write(blank_line);
+			lcd_put_cursor(1, 0);
+			if (menu_index == 0U) {
+				SubMenuDisplay(menu_index, GainValue, buffer, sizeof(buffer));
+			} else {
+				SubMenuDisplay(menu_index, 0, buffer, sizeof(buffer));
+			}
+			lcd_write(buffer);
+		}
+
+		else if (flags == I2S_ENCO_SUB_MENU_FLAG) {
+
+			sub_menu_index = ClampMenuIndex((int32_t)sub_menu_index + (int32_t)delta, 4, 0);
+			lcd_put_cursor(1, 0);
+			lcd_write(blank_line);
+			lcd_put_cursor(1, 0);
+			if (menu_index == 0U) {
+				SubMenuDisplay(menu_index, GainValue, buffer, sizeof(buffer));
+			} else {
+				SubMenuDisplay(menu_index, sub_menu_index, buffer, sizeof(buffer));
+			}
+			lcd_write(buffer);
+		}
+
+		else{
+			lcd_clear();
+			lcd_write("C kc");
+		}
+	}
+  /* USER CODE END StartDisplayTask */
+}
 
 /* Private application code --------------------------------------------------*/
 /* USER CODE BEGIN Application */

@@ -6,16 +6,10 @@
 */
 
 #include "NekoNoLib.h"
-#include <math.h>
-#include <string.h>
-
-#define GAIN_SHIFT_MAX 15
-#define GAIN_SHIFT_MIN (-15)
 
 static const char* const kMenuTexts[MENU_COUNT] = {
-	"Menu 1/3 Vol",
-	"Menu 2/3 N/A",
-	"Menu 3/3 N/A",
+	"Menu 1/2 Vol :",
+	"Menu 2/2 Fc  :",
 };
 
 static inline int16_t clamp_int16(int32_t value, int16_t min, int16_t max)
@@ -71,12 +65,8 @@ size_t SubMenuDisplay(uint8_t _Id_ROW, int16_t _Value, char* _Buf, size_t _lengh
 		return 0;
 	}
 	else if(_Id_ROW == 1U) {
-		snprintf(_Buf, _lenghtBuf, "Submenu : %i", (int)_Value);
+		snprintf(_Buf, _lenghtBuf, "Fc : %i", (int)_Value);
 		return 1;
-	}
-	else if(_Id_ROW == 2U){
-		snprintf(_Buf, _lenghtBuf, "Info    : %d", (int)_Value);
-		return 2;
 	}
 	else{
 		snprintf(_Buf, _lenghtBuf, "ErrorSb   : N/A");
@@ -165,7 +155,6 @@ void Param_Biq_filter_2nd_Order_Low_pass(uint16_t _Fc, uint16_t _Fs, float32_t* 
 
 	float32_t w0 = 2.0f * 3.14159265359f * _Fc / _Fs;
 	float32_t alpha = sinf(w0) / (2.0f * Q);
-
 	float32_t b0 = (1.0f - cosf(w0)) / 2.0f;
 	float32_t b1 =  1.0f - cosf(w0);
 	float32_t b2 = (1.0f - cosf(w0)) / 2.0f;
@@ -177,8 +166,13 @@ void Param_Biq_filter_2nd_Order_Low_pass(uint16_t _Fc, uint16_t _Fs, float32_t* 
 	_Buf[0] = b0 / a0; // b0
 	_Buf[1] = b1 / a0; // b1
 	_Buf[2] = b2 / a0; // b2
+#ifdef CMSIS_Filtering
+	_Buf[3] = - (a1 / a0); // a1
+	_Buf[4] = - (a2 / a0); // a2
+#else
 	_Buf[3] = a1 / a0; // a1
 	_Buf[4] = a2 / a0; // a2
+#endif
 }
 
 /**
@@ -235,7 +229,7 @@ size_t Apply_Biquad_Filter_DF1(const q15_t* _Src, q15_t* _Dst, uint32_t _Size, c
 
 
 /**
-  *   @brief  Apply biquad filter to float32 audio buffer using
+  * @brief  Apply biquad filter to float32 audio buffer using
   * 	   Direct Form II Transposed structure
   * @param  _Src   	Source buffer
   * 		_Dst   	Destination buffer

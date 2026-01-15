@@ -90,11 +90,12 @@ void Error_Handler(void);
 
 /* USER CODE BEGIN Private defines */
 
+
 //#define DIRECT_COPY
 //#define AmplifyOnly
-//#define USER_DF2T
+#define USER_DF2T
 //#define USER_DF1
-#define CMSIS_Filtering
+//#define CMSIS_Filtering
 
 #define I2S_HALF_BUFFER_SIZE 256U
 #define I2S_BUFFER_SIZE (I2S_HALF_BUFFER_SIZE*2)
@@ -106,11 +107,15 @@ void Error_Handler(void);
 #define I2S_ENCO_MENU_FLAG 		 (1U << 1)
 #define AUDIO_GAIN_MIN   (-3)
 #define AUDIO_GAIN_MAX   (3)
+#define FREQC_MIN_HZ     50
+#define FREQC_MAX_HZ     20000
+#define FREQC_STEP_HZ    50
 #define BIQUAD_POSTSHIFT 0U
 #if defined(CMSIS_Filtering) || defined(USER_DF2T) || defined(USER_DF1)
 #define NUM_STAGES 1U
 #endif
 
+extern int32_t FreqC;
 extern float32_t biquadCoeffs[];
 #if defined(USER_DF1)
 extern q15_t biquadState[];

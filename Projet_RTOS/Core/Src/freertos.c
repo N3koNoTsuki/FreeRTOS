@@ -36,7 +36,10 @@
 
 /* Private define ------------------------------------------------------------*/
 /* USER CODE BEGIN PD */
-
+#ifdef CMSIS_Filtering
+static float32_t buf_in[I2S_HALF_BUFFER_SIZE];
+static float32_t buf_out[I2S_HALF_BUFFER_SIZE];
+#endif
 /* USER CODE END PD */
 
 /* Private macro -------------------------------------------------------------*/
@@ -54,7 +57,8 @@ static int16_t i2s3_buffer[I2S_BUFFER_SIZE];
 static int16_t i2s2_buffer[I2S_BUFFER_SIZE];
 
 int32_t GainValue = 0;
-
+int32_t FreqC = 10000;
+int32_t FreqC_Old = 10000;
 
 
 
@@ -119,11 +123,31 @@ static inline int32_t clamp_int32(int32_t value, int32_t min, int32_t max)
 	return value;
 }
 
+static void UpdateBiquadIfFreqChanged(void)
+{
+#if defined(USER_DF2T) || defined(CMSIS_Filtering) || defined(USER_DF1)
+	if (FreqC != FreqC_Old) {
+		FreqC_Old = FreqC;
+		Param_Biq_filter_2nd_Order_Low_pass((uint16_t)FreqC, 44000U, biquadCoeffs);
+		printf("\033[F\033[K");
+		printf("\033[F\033[K");
+		printf("\033[F\033[K");
+		printf("\033[F\033[K");
+		printf("\033[F\033[K");
+		printf("\033[F\033[K");
+		printf("\033[F\033[KFrequence de coupure actuelle: %lu\n\r", FreqC);
+		printf("Biquad Coefficients:\r\n • b0=%f\r\n • b1=%f\r\n • b2=%f\r\n • a1=%f\r\n • a2=%f\r\n",
+					biquadCoeffs[0], biquadCoeffs[1], biquadCoeffs[2],biquadCoeffs[3], biquadCoeffs[4]);
+#ifdef CMSIS_Filtering
+		arm_biquad_cascade_df2T_init_f32(&biquad, NUM_STAGES, biquadCoeffs, biquadState);
+#endif
+	}
+#endif
+}
+
 static void ProcessAudioChunk(int16_t *src, int16_t *dst)
 {
 #ifdef CMSIS_Filtering
-	static float32_t buf_in[I2S_HALF_BUFFER_SIZE];
-	static float32_t buf_out[I2S_HALF_BUFFER_SIZE];
 	for (uint32_t i = 0; i < I2S_HALF_BUFFER_SIZE; i++) {
 		buf_in[i] = (float32_t)src[i];
 	}
@@ -257,6 +281,12 @@ void StartReadEncTask(void *argument)
 				  {
 					  GainValue = (int32_t)clamp_int32(GainValue + delta, AUDIO_GAIN_MIN, AUDIO_GAIN_MAX);
 				  }
+				  else if (menu_index == 1U)
+				  {
+					  int32_t new_freq = FreqC + ((int32_t)delta * FREQC_STEP_HZ);
+					  FreqC = (int32_t)clamp_int32(new_freq, FREQC_MIN_HZ, FREQC_MAX_HZ);
+					  UpdateBiquadIfFreqChanged();
+				  }
 				  osEventFlagsSet(WaitNewValHandle, I2S_ENCO_SUB_MENU_FLAG);
 			  }
 			  else if(i2s_enco_bp_flags == 0U){
@@ -331,7 +361,13 @@ void StartDisplayTask(void *argument)
   MenuDisplay(menu_index, buffer, sizeof(buffer));
   lcd_write(buffer);
   lcd_put_cursor(1, 0);
-  SubMenuDisplay(menu_index, GainValue, buffer, sizeof(buffer));
+  if (menu_index == 0U) {
+	  SubMenuDisplay(menu_index, GainValue, buffer, sizeof(buffer));
+  } else if (menu_index == 1U) {
+	  SubMenuDisplay(menu_index, FreqC, buffer, sizeof(buffer));
+  } else {
+	  SubMenuDisplay(menu_index, 0, buffer, sizeof(buffer));
+  }
   lcd_write(buffer);
 
 	/* Infinite loop */
@@ -341,8 +377,6 @@ void StartDisplayTask(void *argument)
 
 		if(flags & I2S_ENCO_MENU_FLAG){
 			menu_index = ClampMenuIndex((int32_t)menu_index + (int32_t)delta, MENU_COUNT - 1, 0);
-			printf("Delta: %d\r\n", delta);
-			printf("Menu index: %d\r\n", menu_index);
 			lcd_clear();
 			MenuDisplay(menu_index , buffer, sizeof(buffer));
 			lcd_write(buffer);
@@ -351,7 +385,11 @@ void StartDisplayTask(void *argument)
 			lcd_put_cursor(1, 0);
 			if (menu_index == 0U) {
 				SubMenuDisplay(menu_index, GainValue, buffer, sizeof(buffer));
-			} else {
+			} 
+			else if (menu_index == 1U) {
+				SubMenuDisplay(menu_index, FreqC, buffer, sizeof(buffer));
+			}
+			else {
 				SubMenuDisplay(menu_index, 0, buffer, sizeof(buffer));
 			}
 			lcd_write(buffer);
@@ -365,6 +403,8 @@ void StartDisplayTask(void *argument)
 			lcd_put_cursor(1, 0);
 			if (menu_index == 0U) {
 				SubMenuDisplay(menu_index, GainValue, buffer, sizeof(buffer));
+			} else if (menu_index == 1U) {
+				SubMenuDisplay(menu_index, FreqC, buffer, sizeof(buffer));
 			} else {
 				SubMenuDisplay(menu_index, sub_menu_index, buffer, sizeof(buffer));
 			}

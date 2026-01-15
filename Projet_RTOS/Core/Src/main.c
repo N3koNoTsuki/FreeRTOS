@@ -117,14 +117,15 @@ int main(void)
   MX_I2S2_Init();
   MX_I2S3_Init();
   /* USER CODE BEGIN 2 */
-  printf("\033c");
+  printf("\033[2J\033[HDebut du programme\n\r");
+  fflush(stdout);
   HAL_GPIO_TogglePin(LD2_GPIO_Port, LD2_Pin);
   HAL_TIM_Encoder_Start(&htim1, TIM_CHANNEL_ALL);
   lcd_init(hi2c1);
   lcd_write("HELLO");
   lcd_put_cursor(1,0);
-  lcd_write("Neko no Tsuki");
-  printf("Neko no Projet\r\n");
+  lcd_write("BELLEVRAS JULES");
+  printf("Projet de Jules\r\n");
 
 #if !defined(DIRECT_COPY) && !defined(AmplifyOnly) && !defined(CMSIS_Filtering) && !defined(USER_DF2T) && !defined(USER_DF1)
 #error "No audio processing mode defined, please define one of: DIRECT_COPY, AmplifyOnly, CMSIS_Filtering, USER_DF2T, USER_DF1"
@@ -155,7 +156,8 @@ int main(void)
 	printf("CMSIS filtering mode\r\n");
 #endif
 #if defined(USER_DF2T) || defined(CMSIS_Filtering) || defined(USER_DF1)
-	Param_Biq_filter_2nd_Order_Low_pass(500, 44000, biquadCoeffs);
+	Param_Biq_filter_2nd_Order_Low_pass(FreqC, 44000, biquadCoeffs);
+	printf("Frequence de coupure actuelle: %lu\n\r", FreqC);
 	printf("Biquad Coefficients:\r\n • b0=%f\r\n • b1=%f\r\n • b2=%f\r\n • a1=%f\r\n • a2=%f\r\n",
 		   biquadCoeffs[0], biquadCoeffs[1], biquadCoeffs[2],biquadCoeffs[3], biquadCoeffs[4]);
 #if defined(CMSIS_Filtering)

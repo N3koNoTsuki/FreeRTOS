@@ -13,9 +13,12 @@
 #include <stdint.h>
 #include <stdio.h>
 #include <math.h>
+#include <string.h>
 #include "arm_math.h"
-#define MENU_COUNT 3U
+#define MENU_COUNT 2U
 #define BASS_COUNT 3U
+#define GAIN_SHIFT_MAX 15
+#define GAIN_SHIFT_MIN (-15)
 
 static const char blank_line[] = "                ";
 

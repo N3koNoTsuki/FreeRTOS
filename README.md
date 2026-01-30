@@ -3,10 +3,10 @@
 Projet FreeRTOS pour carte **NUCLEO‑F446RE** : acquisition audio I2S en DMA, traitement en temps réel (gain / filtrage biquad) et affichage LCD piloté par un encodeur rotatif.
 
 ## Matériel / BOM
-Le détail du matériel (BOM complète) est dans `CompteRenduJulesBELLEVRAS.pdf`.
+Le détail du matériel (BOM complète) est dans `CompteRendu.pdf`.
 
 ### Brochage
-Voir le schéma et la description dans `CompteRenduJulesBELLEVRAS.pdf`.
+Voir le schéma et la description dans `CompteRendu.pdf`.
 
 ## Fonctionnalités
 - Double buffer DMA I2S (taille demi‑buffer 256 échantillons)
